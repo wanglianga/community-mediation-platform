@@ -183,8 +183,16 @@ const rf = reactive({ satisfaction: 5, emotionalState: 'stable', performanceStat
 const nf = reactive({ caseId: '', type: 'phone' as Followup['type'], scheduledTime: dayjs().add(3, 'day').hour(10).minute(0).format('YYYY-MM-DDTHH:mm') })
 
 function stText(s: string) { return { pending: '待回访', completed: '回访完成', overdue: '已逾期', in_progress: '回访中' }[s] || s }
-function typeText(t: string) { return { phone: '电话回访', home_visit: '上门回访', video: '视频回访', onsite: '现场回访' }[t] || t }
-function iconByType(t: string) { return { phone: markRaw(Phone), home_visit: markRaw(Home), video: markRaw(Video), onsite: markRaw(MapPin) } as any[t] || CalendarClock }
+function typeText(t: any) { 
+  const typeStr = typeof t === 'string' ? t : (t?.type || String(t))
+  const map: Record<string, string> = { phone: '电话回访', home_visit: '上门回访', video: '视频回访', onsite: '现场回访' }
+  return map[typeStr] || typeStr
+}
+function iconByType(t: any) { 
+  const typeStr = typeof t === 'string' ? t : (t?.type || 'phone')
+  const map: Record<string, any> = { phone: markRaw(Phone), home_visit: markRaw(Home), video: markRaw(Video), onsite: markRaw(MapPin) }
+  return map[typeStr] || CalendarClock 
+}
 function emo(v: string) { return { stable: ['稳定', 'text-green-600'], anxious: ['焦虑', 'text-amber-600'], angry: ['愤怒', 'text-red-600'], depressed: ['低落', 'text-blue-600'] } as any[v] }
 function perf(v: string) { return { normal: ['正常', 'text-green-600'], delayed: ['延迟', 'text-amber-600'], problematic: ['有问题', 'text-red-600'] } as any[v] }
 

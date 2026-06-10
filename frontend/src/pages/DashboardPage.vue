@@ -151,7 +151,11 @@ const cardStats = computed(() => [
 
 function timeText(t: string) { const d = dayjs(t); const diff = dayjs().diff(d, 'day'); return diff === 0 ? '今天' : diff === 1 ? '昨天' : diff < 7 ? `${diff}天前` : d.format('MM-DD') }
 function formatTime(t: string) { return dayjs(t).format('MM月DD日 HH:mm') }
-function typeText(t: string) { return { phone: '电话', home_visit: '上门', video: '视频', onsite: '现场' } as any[t] || t }
+function typeText(t: any) { 
+  const typeStr = typeof t === 'string' ? t : (t?.type || String(t))
+  const map: Record<string, string> = { phone: '电话', home_visit: '上门', video: '视频', onsite: '现场' }
+  return map[typeStr] || typeStr
+}
 function findCase(id: string) { return cases.value.find(c => c.id === id) }
 function goCase(id: string) { router.push(`/case/${id}`) }
 function doFollowup(id: string) { router.push(`/followup`) }
