@@ -20,7 +20,12 @@ export interface Clue {
   gridWorkerId: string; gridWorkerName: string; submitTime: string; informantName?: string; informantPhone?: string;
   caseId?: string; status: string; rejectReason?: string;
 }
-export interface MeetingParticipant { id: string; name: string; role: string; status: string; refusalReason?: string; }
+export interface MeetingParticipant {
+  id: string; name: string; role: string; status: string;
+  refusalReason?: string; absentReason?: string;
+  claims?: string; isKeyParty?: boolean; phone?: string;
+  participantType?: 'plaintiff' | 'defendant' | 'third_party' | 'property' | 'committee' | 'relative' | 'other';
+}
 export interface Evidence { id: string; name: string; type: string; url: string; uploadTime: string; }
 export interface Meeting {
   id: string; caseId: string; title: string; scheduleTime: string; location: string; mediatorId: string; mediatorName: string;
@@ -36,7 +41,10 @@ export interface Agreement {
 }
 export interface FulfillmentNode {
   id: string; agreementId: string; termId: string; nodeName: string; description: string; deadline: string;
-  responsibleParty: string; status: string; completeTime?: string; proofUrls?: string[]; remarks?: string;
+  responsibleParty: string; responsiblePartyId?: string; status: string; completeTime?: string;
+  proofUrls?: string[]; proofImages?: { id: string; name: string; url: string; uploadTime: string }[];
+  remarks?: string; category?: 'move_car' | 'pay_fee' | 'repair_leak' | 'apologize' | 'other';
+  supervisionRequired?: boolean; supervisionTime?: string; supervisionHandler?: string;
 }
 export interface FollowupResult {
   satisfaction: number; hasDispute: boolean; disputeDescription?: string; emotionalState: string;
@@ -207,8 +215,9 @@ export class InMemoryStore implements OnModuleInit {
         scheduleTime: now.add(1, 'day').hour(14).minute(0).format(),
         location: '阳光花园会议室', mediatorId: 'md1', mediatorName: '李调解员',
         participants: [
-          { id: 'P3', name: '孙先生', role: '申请人', status: 'confirmed' },
-          { id: 'P4', name: '物业经理-钱某', role: '被申请人', status: 'invited' }
+          { id: 'P3', name: '孙先生', role: '申请人', status: 'confirmed', isKeyParty: true, participantType: 'plaintiff', claims: '要求物业立即清理占用车位的外来车辆，并赔偿因无法使用车位造成的损失', phone: '13900000003' },
+          { id: 'P4', name: '物业经理-钱某', role: '被申请人', status: 'invited', isKeyParty: true, participantType: 'property', claims: '外来车辆为临时访客登记，将加强管理', phone: '13900000004' },
+          { id: 'P-EX1', name: '阳光花园业委会-李主任', role: '第三方协调方', status: 'invited', isKeyParty: false, participantType: 'committee', claims: '业委会可协助监督物业整改，建议增设临时车位', phone: '13900000100' }
         ],
         requirements: ['出示车位购买证明', '提供外来车辆登记台账', '说明长期占用原因'],
         evidenceMaterials: [
@@ -222,8 +231,8 @@ export class InMemoryStore implements OnModuleInit {
         scheduleTime: now.subtract(6, 'hour').format(),
         location: '幸福社区调解室', mediatorId: 'md1', mediatorName: '李调解员',
         participants: [
-          { id: 'P1', name: '陈先生', role: '申请人', status: 'attended' },
-          { id: 'P2', name: '刘女士', role: '被申请人', status: 'attended' }
+          { id: 'P1', name: '陈先生', role: '申请人', status: 'attended', isKeyParty: true, participantType: 'plaintiff', claims: '要求楼上停止夜间噪声，保证正常休息', phone: '13900000001' },
+          { id: 'P2', name: '刘女士', role: '被申请人', status: 'attended', isKeyParty: true, participantType: 'defendant', claims: '正常生活活动产生的声音，认为楼下过于敏感', phone: '13900000002' }
         ],
         requirements: ['双方到场陈述事实情况'],
         evidenceMaterials: [],
@@ -284,11 +293,11 @@ export class InMemoryStore implements OnModuleInit {
     ];
 
     this.fulfillmentNodes = [
-      { id: 'N001', agreementId: 'A005', termId: 'T4', nodeName: '第一期赔偿款支付', description: '501室吴女士一次性支付赔偿款8000元', deadline: now.add(3, 'day').format(), responsibleParty: '吴女士', status: 'in_progress' },
-      { id: 'N002', agreementId: 'A005', termId: 'T5', nodeName: '卫生间防水施工', description: '501室重新做卫生间防水处理', deadline: now.add(5, 'day').format(), responsibleParty: '吴女士', status: 'pending' },
-      { id: 'N003', agreementId: 'A005', termId: 'T6', nodeName: '收款确认与免责声明', description: '401室确认收款并签署不再追究确认书', deadline: now.add(6, 'day').format(), responsibleParty: '周先生', status: 'pending' },
-      { id: 'N004', agreementId: 'A003', termId: 'T2', nodeName: '本月赡养费支付', description: '两兄弟各支付本月赡养费1000元', deadline: now.format('YYYY-MM-DD'), responsibleParty: '两兄弟', status: 'pending' },
-      { id: 'N005', agreementId: '', termId: '', nodeName: '（已逾期）装修公司首期赔款', description: '装修公司首期赔款5000元，已于3天前到期', deadline: now.subtract(3, 'day').format(), responsibleParty: '装修公司', status: 'overdue', remarks: '装修公司负责人电话无法接通，经网格员上门确认公司已搬离原注册地址，建议启动司法确认程序' }
+      { id: 'N001', agreementId: 'A005', termId: 'T4', nodeName: '支付漏水赔偿款', description: '501室吴女士一次性支付401室周先生装修修复及赔偿费共计8000元整', deadline: now.add(3, 'day').format(), responsibleParty: '吴女士', status: 'in_progress', category: 'pay_fee' },
+      { id: 'N002', agreementId: 'A005', termId: 'T5', nodeName: '卫生间防水维修', description: '501室完成卫生间防水重新施工并出具合格证明', deadline: now.add(5, 'day').format(), responsibleParty: '吴女士', status: 'pending', category: 'repair_leak' },
+      { id: 'N003', agreementId: 'A005', termId: 'T6', nodeName: '书面道歉', description: '吴女士就漏水事件向周先生书面致歉', deadline: now.add(2, 'day').format(), responsibleParty: '吴女士', status: 'pending', category: 'apologize' },
+      { id: 'N004', agreementId: 'A003', termId: 'T2', nodeName: '本月赡养费支付', description: '两兄弟各支付本月赡养费1000元', deadline: now.format('YYYY-MM-DD'), responsibleParty: '两兄弟', status: 'pending', category: 'pay_fee' },
+      { id: 'N005', agreementId: '', termId: '', nodeName: '（已逾期）挪车义务', description: '占用他人车位的车辆应于3天前移走', deadline: now.subtract(3, 'day').format(), responsibleParty: '装修公司', status: 'overdue', category: 'move_car', remarks: '负责人电话无法接通，经网格员上门确认公司已搬离原注册地址，建议启动司法确认程序', supervisionRequired: true, supervisionTime: now.subtract(1, 'day').format(), supervisionHandler: '赵司法所' }
     ];
 
     this.followups = [

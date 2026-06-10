@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InMemoryStore } from '../../store/store';
 import dayjs from 'dayjs';
 
@@ -46,7 +46,7 @@ export class AgreementsService {
           this.store.fulfillmentNodes.unshift({
             id: this.store.nextNodeId(), agreementId: a.id, termId: t.id,
             nodeName: `第${t.order}条履行节点`, description: t.content, deadline,
-            responsibleParty: t.partyResponsible, status: t.status || 'pending'
+            responsibleParty: t.partyResponsible, status: t.status || 'pending', category: 'other'
           });
         });
       }
@@ -64,18 +64,118 @@ export class AgreementsService {
     if (a.caseId) this.updateCaseStatus(a.caseId, 'agreement_rejected', reason);
     return a;
   }
-  getFulfillmentNodes(aid: string) { return this.store.fulfillmentNodes.filter(n => n.agreementId === aid); }
+  getFulfillmentNodes(aid: string) {
+    const nodes = this.store.fulfillmentNodes.filter(n => n.agreementId === aid);
+    nodes.forEach(n => {
+      if (n.status !== 'completed' && n.status !== 'overdue' && n.status !== 'violated') {
+        if (dayjs().isAfter(dayjs(n.deadline))) {
+          n.status = 'overdue';
+        }
+      }
+    });
+    return nodes;
+  }
+  createFulfillmentNode(aid: string, data: any) {
+    const a = this.store.agreements.find(x => x.id === aid); if (!a) return null;
+    const nn: any = {
+      id: this.store.nextNodeId(),
+      agreementId: aid,
+      termId: data.termId || '',
+      nodeName: data.nodeName || '',
+      description: data.description || '',
+      deadline: data.deadline || dayjs().add(7, 'day').format('YYYY-MM-DD'),
+      responsibleParty: data.responsibleParty || '',
+      responsiblePartyId: data.responsiblePartyId || '',
+      status: data.status || 'pending',
+      category: data.category || 'other',
+      proofUrls: data.proofUrls || [],
+      proofImages: data.proofImages || [],
+      remarks: data.remarks || ''
+    };
+    this.store.fulfillmentNodes.unshift(nn);
+    if (a.caseId) {
+      this.store.addTimeline(a.caseId, 'note', '新增履行节点', `新增履行节点：${nn.nodeName}`, '调解员');
+    }
+    return nn;
+  }
   updateFulfillmentNode(nodeId: string, data: any) {
     const idx = this.store.fulfillmentNodes.findIndex(n => n.id === nodeId);
     if (idx >= 0) {
       this.store.fulfillmentNodes[idx] = { ...this.store.fulfillmentNodes[idx], ...data };
-      if (data.status === 'completed') this.store.fulfillmentNodes[idx].completeTime = dayjs().format();
+      if (data.status === 'completed') {
+        this.store.fulfillmentNodes[idx].completeTime = dayjs().format();
+        const n = this.store.fulfillmentNodes[idx];
+        const a = this.store.agreements.find(x => x.id === n.agreementId);
+        if (a && a.caseId) {
+          this.store.addTimeline(a.caseId, 'note', '履行节点完成', `节点完成：${n.nodeName}`, '系统');
+        }
+      }
+      if (data.status === 'overdue' || data.status === 'violated') {
+        const n = this.store.fulfillmentNodes[idx];
+        const a = this.store.agreements.find(x => x.id === n.agreementId);
+        if (a && a.caseId) {
+          this.updateCaseStatus(a.caseId, 'fulfillment_overdue', `节点逾期：${n.nodeName}`);
+        }
+      }
       return this.store.fulfillmentNodes[idx];
+    }
+    return null;
+  }
+  deleteFulfillmentNode(nodeId: string) {
+    const idx = this.store.fulfillmentNodes.findIndex(n => n.id === nodeId);
+    if (idx >= 0) {
+      this.store.fulfillmentNodes.splice(idx, 1);
+      return { success: true };
+    }
+    return null;
+  }
+  superviseNode(nodeId: string, handlerId: string, handlerName: string) {
+    const idx = this.store.fulfillmentNodes.findIndex(n => n.id === nodeId);
+    if (idx >= 0) {
+      const node = this.store.fulfillmentNodes[idx];
+      if (node.status !== 'overdue' && node.status !== 'violated') {
+        throw new BadRequestException('只有逾期或违约的节点才能启动督办');
+      }
+      node.supervisionRequired = true;
+      node.supervisionTime = dayjs().format();
+      node.supervisionHandler = handlerName;
+      const a = this.store.agreements.find(x => x.id === node.agreementId);
+      if (a && a.caseId) {
+        this.updateCaseStatus(a.caseId, 'escalated', `督办节点：${node.nodeName}`);
+        this.store.addTimeline(a.caseId, 'escalated', '启动督办', `对节点"${node.nodeName}"启动督办，督办人：${handlerName}`, handlerName);
+      }
+      return node;
+    }
+    return null;
+  }
+  addProofImage(nodeId: string, image: { name: string; url: string }) {
+    const idx = this.store.fulfillmentNodes.findIndex(n => n.id === nodeId);
+    if (idx >= 0) {
+      if (!this.store.fulfillmentNodes[idx].proofImages) {
+        this.store.fulfillmentNodes[idx].proofImages = [];
+      }
+      const newImage = {
+        id: 'IMG-' + Date.now(),
+        name: image.name,
+        url: image.url,
+        uploadTime: dayjs().format()
+      };
+      this.store.fulfillmentNodes[idx].proofImages!.push(newImage);
+      return newImage;
     }
     return null;
   }
   getFulfillmentList() {
     const list = this.store.agreements.filter(a => ['effective', 'fully_signed', 'partially_signed'].includes(a.status));
+    const now = dayjs();
+    list.forEach(a => {
+      const nodes = this.store.fulfillmentNodes.filter(n => n.agreementId === a.id);
+      nodes.forEach(n => {
+        if (n.status !== 'completed' && n.status !== 'overdue' && n.status !== 'violated' && now.isAfter(dayjs(n.deadline))) {
+          n.status = 'overdue';
+        }
+      });
+    });
     const result = list.map(a => {
       const nodes = this.getFulfillmentNodes(a.id);
       const c = this.store.cases.find(cc => cc.id === a.caseId);

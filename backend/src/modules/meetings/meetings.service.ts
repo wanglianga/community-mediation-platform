@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InMemoryStore } from '../../store/store';
 import dayjs from 'dayjs';
 
@@ -25,7 +25,13 @@ export class MeetingsService {
       id: this.store.nextMeetingId(), caseId: data.caseId || '', title: data.title || '',
       scheduleTime: data.scheduleTime || dayjs().add(1, 'day').format(), location: data.location || '',
       mediatorId: data.mediatorId || 'md1', mediatorName: data.mediatorName || '调解员',
-      participants: data.participants || [], requirements: data.requirements || [],
+      participants: (data.participants || []).map((p: any) => ({
+        id: p.id || ('P-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)),
+        name: p.name || '', role: p.role || '', status: p.status || 'invited',
+        participantType: p.participantType || 'other', isKeyParty: p.isKeyParty !== undefined ? p.isKeyParty : false,
+        claims: p.claims || '', phone: p.phone || ''
+      })),
+      requirements: data.requirements || [],
       evidenceMaterials: data.evidenceMaterials || [], status: 'scheduled', createTime: dayjs().format()
     };
     this.store.meetings.unshift(nm);
@@ -37,6 +43,37 @@ export class MeetingsService {
     if (idx >= 0) this.store.meetings[idx] = { ...this.store.meetings[idx], ...data };
     return this.store.meetings[idx] || null;
   }
+  addParticipant(id: string, participant: any) {
+    const m = this.store.meetings.find(x => x.id === id); if (!m) return null;
+    const np = {
+      id: 'P-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+      name: participant.name || '', role: participant.role || '', status: participant.status || 'invited',
+      participantType: participant.participantType || 'other', isKeyParty: participant.isKeyParty || false,
+      claims: participant.claims || '', phone: participant.phone || ''
+    };
+    m.participants.push(np);
+    this.store.addTimeline(m.caseId, 'note', '追加参会方', `追加参会方：${np.name}（${np.role}）`, '调解员');
+    return m;
+  }
+  removeParticipant(id: string, pid: string) {
+    const m = this.store.meetings.find(x => x.id === id); if (!m) return null;
+    m.participants = m.participants.filter(p => p.id !== pid);
+    return m;
+  }
+  updateParticipant(id: string, pid: string, data: any) {
+    const m = this.store.meetings.find(x => x.id === id); if (!m) return null;
+    const p = m.participants.find(pp => pp.id === pid); if (!p) return null;
+    Object.assign(p, data);
+    return m;
+  }
+  checkKeyPartiesAttended(id: string) {
+    const m = this.store.meetings.find(x => x.id === id); if (!m) return { allAttended: true, missingKeyParties: [] };
+    const missing = m.participants.filter(p => p.isKeyParty && p.status !== 'attended' && p.status !== 'confirmed');
+    return {
+      allAttended: missing.length === 0,
+      missingKeyParties: missing.map(p => ({ id: p.id, name: p.name, role: p.role, status: p.status, absentReason: p.absentReason }))
+    };
+  }
   recordRefusal(id: string, pid: string, reason: string) {
     const m = this.store.meetings.find(x => x.id === id); if (!m) return null;
     const p = m.participants.find(pp => pp.id === pid);
@@ -47,11 +84,24 @@ export class MeetingsService {
     }
     return m;
   }
+  recordAbsent(id: string, pid: string, reason: string) {
+    const m = this.store.meetings.find(x => x.id === id); if (!m) return null;
+    const p = m.participants.find(pp => pp.id === pid);
+    if (p) { p.status = 'absent'; p.absentReason = reason; }
+    return m;
+  }
   complete(id: string, data: any) {
     const m = this.store.meetings.find(x => x.id === id); if (!m) return null;
+    const keyCheck = this.checkKeyPartiesAttended(id);
+    if (!keyCheck.allAttended && !data.forceComplete) {
+      const missingNames = keyCheck.missingKeyParties.map(p => p.name).join('、');
+      throw new BadRequestException(`关键方缺席，无法生成最终协议。缺席关键方：${missingNames}。如需继续请勾选强制完成。`);
+    }
     m.status = 'completed'; m.minutes = data.minutes; m.resolution = data.resolution;
     m.actualEndTime = dayjs().format();
-    m.participants.forEach((p: any) => { if (p.status !== 'refused') p.status = 'attended'; });
+    m.participants.forEach((p: any) => {
+      if (p.status !== 'refused' && p.status !== 'absent') p.status = 'attended';
+    });
     if (m.caseId) this.updateCaseStatus(m.caseId, 'meeting_completed');
     return m;
   }

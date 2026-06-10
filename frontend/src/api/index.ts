@@ -140,6 +140,13 @@ export const meetingApi = {
     } catch {}
     return mock.getMeeting(id)
   },
+  async checkKeyParties(id: string) {
+    try {
+      const res = await fetch(`/api/meetings/${id}/key-check`)
+      if (res.ok) return res.json()
+    } catch {}
+    return { allAttended: true, missingKeyParties: [] }
+  },
   async create(data: Partial<Meeting>) {
     try {
       const res = await post('/api/meetings', data)
@@ -154,6 +161,27 @@ export const meetingApi = {
     } catch {}
     return mock.updateMeeting(id, data)
   },
+  async addParticipant(id: string, participant: any) {
+    try {
+      const res = await post(`/api/meetings/${id}/participants`, participant)
+      if (res.ok) return res.json()
+    } catch {}
+    return null
+  },
+  async removeParticipant(id: string, pid: string) {
+    try {
+      const res = await fetch(`/api/meetings/${id}/participants/${pid}`, { method: 'DELETE' })
+      if (res.ok) return res.json()
+    } catch {}
+    return null
+  },
+  async updateParticipant(id: string, pid: string, data: any) {
+    try {
+      const res = await put(`/api/meetings/${id}/participants/${pid}`, data)
+      if (res.ok) return res.json()
+    } catch {}
+    return null
+  },
   async recordRefusal(id: string, participantId: string, reason: string) {
     try {
       const res = await post(`/api/meetings/${id}/refusal`, { participantId, reason })
@@ -161,12 +189,24 @@ export const meetingApi = {
     } catch {}
     return mock.recordMeetingRefusal(id, participantId, reason)
   },
-  async complete(id: string, data: { minutes: string; resolution: string }) {
+  async recordAbsent(id: string, participantId: string, reason: string) {
     try {
-      const res = await post(`/api/meetings/${id}/complete`, data)
+      const res = await post(`/api/meetings/${id}/absent`, { participantId, reason })
       if (res.ok) return res.json()
     } catch {}
-    return mock.completeMeeting(id, data)
+    return null
+  },
+  async complete(id: string, data: { minutes: string; resolution: string; forceComplete?: boolean }) {
+    try {
+      const res = await post(`/api/meetings/${id}/complete`, data)
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.message || '完成会议失败')
+      }
+      return res.json()
+    } catch (e: any) {
+      throw e
+    }
   }
 }
 
@@ -213,12 +253,45 @@ export const agreementApi = {
     } catch {}
     return mock.getFulfillmentNodes(agreementId)
   },
+  async createFulfillmentNode(agreementId: string, data: Partial<FulfillmentNode>) {
+    try {
+      const res = await post(`/api/agreements/${agreementId}/nodes`, data)
+      if (res.ok) return res.json()
+    } catch {}
+    return null
+  },
   async updateFulfillmentNode(nodeId: string, data: Partial<FulfillmentNode>) {
     try {
       const res = await put(`/api/agreements/nodes/${nodeId}`, data)
       if (res.ok) return res.json()
     } catch {}
     return mock.updateFulfillmentNode(nodeId, data)
+  },
+  async deleteFulfillmentNode(nodeId: string) {
+    try {
+      const res = await fetch(`/api/agreements/nodes/${nodeId}`, { method: 'DELETE' })
+      if (res.ok) return res.json()
+    } catch {}
+    return null
+  },
+  async superviseNode(nodeId: string, handlerId: string, handlerName: string) {
+    try {
+      const res = await post(`/api/agreements/nodes/${nodeId}/supervise`, { handlerId, handlerName })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.message || '督办失败')
+      }
+      return res.json()
+    } catch (e: any) {
+      throw e
+    }
+  },
+  async addProofImage(nodeId: string, name: string, url: string) {
+    try {
+      const res = await post(`/api/agreements/nodes/${nodeId}/proof-image`, { name, url })
+      if (res.ok) return res.json()
+    } catch {}
+    return null
   },
   async getFulfillmentList() {
     try {

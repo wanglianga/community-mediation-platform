@@ -21,6 +21,14 @@
           <option value="overdue">已逾期</option>
           <option value="violated">违约</option>
         </select>
+        <select v-model="fCategory" class="input-base !w-36">
+          <option value="">全部类型</option>
+          <option value="move_car">挪车</option>
+          <option value="pay_fee">补缴费用</option>
+          <option value="repair_leak">维修漏水</option>
+          <option value="apologize">道歉</option>
+          <option value="other">其他</option>
+        </select>
         <select v-model="fRisk" class="input-base !w-32">
           <option value="">全部风险</option>
           <option value="high">高风险</option>
@@ -69,16 +77,23 @@
           </div>
         </div>
         <div class="border-t border-gray-100 pt-5">
-          <h4 class="text-sm font-semibold text-gray-700 mb-4 flex items-center"><FileText class="w-4 h-4 mr-2 text-primary-500" />履行节点进度</h4>
+          <div class="flex items-center justify-between mb-4">
+            <h4 class="text-sm font-semibold text-gray-700 flex items-center"><FileText class="w-4 h-4 mr-2 text-primary-500" />履行节点进度</h4>
+            <button v-if="store.canMediate" @click="openAddNode(item.agreement.id)" class="btn-outline !py-1 !px-3 text-xs"><Plus class="w-3 h-3 mr-1" />新增履行节点</button>
+          </div>
           <div class="space-y-3">
             <div v-for="n in item.nodes" :key="n.id" class="p-4 rounded-xl border transition-all" :class="n.status === 'completed' ? 'bg-green-50/50 border-green-100' : n.status === 'overdue' || n.status === 'violated' ? 'bg-red-50/50 border-red-100' : n.status === 'in_progress' ? 'bg-primary-50/50 border-primary-100' : 'bg-gray-50/50 border-gray-100'">
               <div class="flex items-start justify-between gap-4">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center flex-wrap gap-2 mb-1">
+                    <span v-if="n.category" class="badge text-[10px]" :class="categoryBadge(n.category)">
+                      {{ categoryText(n.category) }}
+                    </span>
                     <span class="badge text-xs" :class="n.status === 'completed' ? 'status-completed' : n.status === 'overdue' ? 'status-overdue' : n.status === 'violated' ? 'bg-red-200 text-red-800' : n.status === 'in_progress' ? 'status-progress' : 'status-pending'">
                       {{ fs(n.status) }}
                     </span>
                     <span v-if="isNearDeadline(n) && n.status !== 'completed'" class="badge bg-amber-100 text-amber-700 text-xs">⏰ 即将到期</span>
+                    <span v-if="n.supervisionRequired" class="badge bg-purple-100 text-purple-700 text-xs">👮 督办中</span>
                   </div>
                   <h5 class="font-semibold text-gray-800 text-sm mt-1">{{ n.nodeName }}</h5>
                   <p class="text-sm text-gray-600 mt-0.5">{{ n.description }}</p>
@@ -88,11 +103,25 @@
                     <span v-if="n.completeTime">✅ 完成：{{ dayjs(n.completeTime).format('YYYY-MM-DD') }}</span>
                     <span v-if="n.status === 'overdue'">⏳ 逾期：{{ daysOverdue(n.deadline) }} 天</span>
                   </div>
+                  <div v-if="n.supervisionHandler" class="text-xs text-purple-600 mt-1">
+                    📋 督办人：{{ n.supervisionHandler }}
+                    <span v-if="n.supervisionTime">（{{ dayjs(n.supervisionTime).format('YYYY-MM-DD HH:mm') }}）</span>
+                  </div>
                   <p v-if="n.remarks" class="text-xs mt-2 p-2 rounded-lg" :class="n.status === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'">📝 {{ n.remarks }}</p>
+                  <div v-if="n.proofImages && n.proofImages.length" class="mt-3">
+                    <p class="text-xs text-gray-500 mb-2">📷 凭证照片（{{ n.proofImages.length }}）</p>
+                    <div class="flex flex-wrap gap-2">
+                      <div v-for="img in n.proofImages" :key="img.id" class="w-16 h-16 rounded-lg border border-gray-200 overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer hover:border-primary-400 transition-all" @click="previewImage(img)">
+                        <ImageIcon class="w-6 h-6 text-gray-400" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div class="flex flex-col space-y-2 shrink-0">
                   <button v-if="n.status !== 'completed' && store.canMediate" @click="openComplete(item.agreement.id, n)" class="btn-success !py-1.5 !px-3 text-xs whitespace-nowrap"><Check class="w-3 h-3 mr-1" />确认完成</button>
-                  <button v-if="(n.status === 'overdue' || n.status === 'violated') && store.canSupervise" @click="alert(n)" class="btn-danger !py-1.5 !px-3 text-xs whitespace-nowrap"><AlertTriangle class="w-3 h-3 mr-1" />督办</button>
+                  <button v-if="(n.status === 'overdue' || n.status === 'violated') && store.canSupervise && !n.supervisionRequired" @click="startSupervise(n)" class="btn-danger !py-1.5 !px-3 text-xs whitespace-nowrap"><AlertTriangle class="w-3 h-3 mr-1" />启动督办</button>
+                  <button v-if="store.canMediate && n.status !== 'completed'" @click="openEditNode(item.agreement.id, n)" class="btn-outline !py-1.5 !px-3 text-xs whitespace-nowrap">编辑</button>
+                  <button v-if="store.canMediate && !n.supervisionRequired" @click="deleteNode(n)" class="btn-outline !py-1.5 !px-3 text-xs whitespace-nowrap !text-red-500 !border-red-200 hover:!bg-red-50">删除</button>
                 </div>
               </div>
             </div>
@@ -108,7 +137,7 @@
     <Teleport to="body">
       <div v-if="showComplete" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="showComplete = null">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-          <h3 class="text-lg font-bold text-gray-800 mb-4">确认履行节点完成</h3>
+          <h3 class="text-lg font-bold text-gray-800 mb-4">确认履行完成</h3>
           <div class="p-4 bg-gray-50 rounded-xl mb-4">
             <p class="text-sm font-semibold text-gray-700 mb-1">{{ showComplete.nodeName }}</p>
             <p class="text-xs text-gray-500">{{ showComplete.description }}</p>
@@ -117,10 +146,16 @@
           <div class="space-y-4">
             <div><label class="label-base">完成情况说明</label><textarea v-model="cf.remarks" rows="3" class="input-base resize-none" placeholder="简述履行情况..."></textarea></div>
             <div>
-              <label class="label-base block mb-2">上传凭证（可选）</label>
-              <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center text-sm text-gray-500 hover:border-primary-400 hover:bg-primary-50/20 cursor-pointer">
+              <label class="label-base block mb-2">上传凭证照片（可选）</label>
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center text-sm text-gray-500 hover:border-primary-400 hover:bg-primary-50/20 cursor-pointer" @click="simulateUploadProof">
                 <Upload class="w-6 h-6 mx-auto mb-1 text-gray-400" />
                 点击上传凭证照片/转账截图
+              </div>
+              <div v-if="cf.proofImages.length" class="flex flex-wrap gap-2 mt-3">
+                <div v-for="(img, idx) in cf.proofImages" :key="idx" class="w-16 h-16 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center relative group">
+                  <ImageIcon class="w-6 h-6 text-gray-400" />
+                  <button @click="cf.proofImages.splice(idx,1)" class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs hover:bg-red-600">×</button>
+                </div>
               </div>
             </div>
           </div>
@@ -128,6 +163,60 @@
             <button @click="showComplete = null" class="btn-outline">取消</button>
             <button @click="submitComplete" class="btn-success">确认完成</button>
           </div>
+        </div>
+      </div>
+      <div v-if="showAddFulfillment" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="showAddFulfillment = false">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
+          <h3 class="text-xl font-bold text-gray-800 mb-5">{{ editingNode ? '编辑履行节点' : '新增履行履行' }}</h3>
+          <form @submit.prevent="submitFulfillmentNode" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div class="col-span-2">
+                <label class="label-base">履行名称 <span class="text-red-500">*</span></label>
+                <input v-model="nf.nodeName" class="input-base" placeholder="例如：立即挪车" required />
+              </div>
+              <div>
+                <label class="label-base">履行类型</label>
+                <select v-model="nf.category" class="input-base">
+                  <option value="">请选择</option>
+                  <option value="move_car">挪车</option>
+                  <option value="pay_fee">补缴费用</option>
+                  <option value="repair_leak">维修漏水</option>
+                  <option value="apologize">道歉</option>
+                  <option value="other">其他</option>
+                </select>
+              </div>
+              <div>
+                <label class="label-base">履行状态</label>
+                <select v-model="nf.status" class="input-base">
+                  <option value="pending">待履行</option>
+                  <option value="in_progress">履行中</option>
+                  <option value="completed">已完成</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="label-base">履行描述</label>
+              <textarea v-model="nf.description" rows="2" class="input-base resize-none" placeholder="详细描述履行内容..."></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="label-base">责任人/责任方 <span class="text-red-500">*</span></label>
+                <input v-model="nf.responsibleParty" class="input-base" placeholder="例如：张某某或物业公司" required />
+              </div>
+              <div>
+                <label class="label-base">履行截止日期 <span class="text-red-500">*</span></label>
+                <input v-model="nf.deadline" type="date" class="input-base" required />
+              </div>
+            </div>
+            <div>
+              <label class="label-base">备注</label>
+              <textarea v-model="nf.remarks" rows="2" class="input-base resize-none" placeholder="其他说明..."></textarea>
+            </div>
+            <div class="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+              <button type="button" @click="showAddFulfillment = false" class="btn-outline">取消</button>
+              <button type="submit" class="btn-primary">{{ editingNode ? '保存修改' : '新增履行' }}</button>
+            </div>
+          </form>
         </div>
       </div>
     </Teleport>
@@ -138,8 +227,8 @@
 import { ref, computed, onMounted, markRaw, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
-import { ClipboardCheck, FileText, Check, AlertTriangle, CalendarClock, Upload, Clock, CheckCircle, AlertCircle } from 'lucide-vue-next'
-import type { FulfillmentNode, Agreement } from '../types'
+import { ClipboardCheck, FileText, Check, AlertTriangle, CalendarClock, Upload, Clock, CheckCircle, AlertCircle, Plus, Image as ImageIcon } from 'lucide-vue-next'
+import type { FulfillmentNode, FulfillmentCategory } from '../types'
 import { agreementApi, followupApi } from '../api'
 import { useUserStore } from '../stores/user'
 
@@ -147,11 +236,22 @@ const store = useUserStore()
 const router = useRouter()
 const list = ref<any[]>([])
 const fStatus = ref('')
+const fCategory = ref('')
 const fRisk = ref('')
 const showComplete = ref<FulfillmentNode | null>(null)
-const cf = reactive({ remarks: '' })
+const showAddFulfillment = ref(false)
+const currentAgreementId = ref('')
+const editingNode = ref<FulfillmentNode | null>(null)
+
+const cf = reactive({ remarks: '', proofImages: [] as { name: string; url: string }[] })
+const nf = reactive({
+  nodeName: '', description: '', deadline: '', responsibleParty: '',
+  status: 'pending' as FulfillmentNode['status'], category: '' as FulfillmentCategory | '', remarks: ''
+})
 
 function fs(s: string) { return { pending: '待开始', in_progress: '履行中', completed: '已完成', overdue: '已逾期', violated: '违约' }[s] || s }
+function categoryText(c: string) { return { move_car: '🚗 挪车', pay_fee: '💰 补缴费用', repair_leak: '🔧 维修漏水', apologize: '🙏 道歉', other: '📋 其他履行' }[c] || c }
+function categoryBadge(c: string) { return { move_car: 'bg-blue-100 text-blue-700', pay_fee: 'bg-yellow-100 text-yellow-700', repair_leak: 'bg-teal-100 text-teal-700', apologize: 'bg-pink-100 text-pink-700', other: 'bg-gray-100 text-gray-700' }[c] || 'bg-gray-100 text-gray-700' }
 function isNearDeadline(n: FulfillmentNode) { const d = dayjs(n.deadline); return dayjs().isAfter(d.subtract(3, 'day')) && dayjs().isBefore(d) }
 function daysOverdue(d: string) { return dayjs().diff(dayjs(d), 'day') }
 
@@ -178,6 +278,9 @@ const filteredList = computed(() => list.value.filter((it: any) => {
   if (fStatus.value) {
     if (!it.nodes.some((n: FulfillmentNode) => n.status === fStatus.value)) return false
   }
+  if (fCategory.value) {
+    if (!it.nodes.some((n: FulfillmentNode) => n.category === fCategory.value)) return false
+  }
   if (fRisk.value === 'high' && !it.hasOverdue) return false
   if (fRisk.value === 'normal' && it.hasOverdue) return false
   return true
@@ -186,16 +289,90 @@ const filteredList = computed(() => list.value.filter((it: any) => {
 function openComplete(aid: string, n: FulfillmentNode) {
   showComplete.value = n
   cf.remarks = ''
+  cf.proofImages = []
   void aid
 }
+
+function simulateUploadProof() {
+  const name = '凭证照片_' + (cf.proofImages.length + 1) + '.jpg'
+  cf.proofImages.push({ name, url: '#mock-image-' + Date.now() })
+}
+
 async function submitComplete() {
   if (!showComplete.value) return
-  await agreementApi.updateFulfillmentNode(showComplete.value.id, { status: 'completed', remarks: cf.remarks })
+  const updateData: any = { status: 'completed', remarks: cf.remarks }
+  if (cf.proofImages.length) {
+    updateData.proofImages = cf.proofImages.map((img, i) => ({
+      id: 'IMG-' + Date.now() + '-' + i,
+      name: img.name,
+      url: img.url,
+      uploadTime: dayjs().format()
+    }))
+  }
+  await agreementApi.updateFulfillmentNode(showComplete.value.id, updateData)
   showComplete.value = null
   list.value = await agreementApi.getFulfillmentList()
 }
-function alert(n: FulfillmentNode) { alert('督办提醒：节点"' + n.nodeName + '"已逾期，需联系司法所介入') }
+
+function previewImage(img: any) {
+  alert(`预览图片：${img.name}\n上传时间：${dayjs(img.uploadTime).format('YYYY-MM-DD HH:mm')}`)
+}
+
+function openAddNode(aid: string) {
+  currentAgreementId.value = aid
+  editingNode.value = null
+  Object.assign(nf, { nodeName: '', description: '', deadline: dayjs().add(7, 'day').format('YYYY-MM-DD'), responsibleParty: '', status: 'pending', category: '', remarks: '' })
+  showAddFulfillment.value = true
+}
+
+function openEditNode(aid: string, n: FulfillmentNode) {
+  currentAgreementId.value = aid
+  editingNode.value = n
+  Object.assign(nf, {
+    nodeName: n.nodeName,
+    description: n.description || '',
+    deadline: dayjs(n.deadline).format('YYYY-MM-DD'),
+    responsibleParty: n.responsibleParty,
+    status: n.status === 'overdue' || n.status === 'violated' ? 'pending' : n.status,
+    category: n.category || '',
+    remarks: n.remarks || ''
+  })
+  showAddFulfillment.value = true
+}
+
+async function submitFulfillmentNode() {
+  try {
+    if (editingNode.value) {
+      await agreementApi.updateFulfillmentNode(editingNode.value.id, { ...nf })
+    } else {
+      await agreementApi.createFulfillmentNode(currentAgreementId.value, { ...nf })
+    }
+    showAddFulfillment.value = false
+    list.value = await agreementApi.getFulfillmentList()
+  } catch (e: any) {
+    alert(e.message || '操作失败')
+  }
+}
+
+async function deleteNode(n: FulfillmentNode) {
+  if (!confirm('确定删除此履行节点？此操作不可撤销。')) return
+  await agreementApi.deleteFulfillmentNode(n.id)
+  list.value = await agreementApi.getFulfillmentList()
+}
+
+async function startSupervise(n: FulfillmentNode) {
+  if (!confirm(`确定对履行节点"${n.nodeName}"启动司法所督办？启动后案件将升级处理。`)) return
+  try {
+    await agreementApi.superviseNode(n.id, store.currentUser?.id || 'unknown', store.userName)
+    alert('督办已启动，案件已升级处理')
+    list.value = await agreementApi.getFulfillmentList()
+  } catch (e: any) {
+    alert(e.message || '督办启动失败')
+  }
+}
+
 function goCase(id: string) { router.push(`/case/${id}`) }
+
 async function createFollowup(item: any) {
   if (!item.case) return
   await followupApi.create({

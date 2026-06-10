@@ -88,6 +88,8 @@ export interface Clue {
   rejectReason?: string
 }
 
+export type ParticipantType = 'plaintiff' | 'defendant' | 'third_party' | 'property' | 'committee' | 'relative' | 'other'
+
 export interface Meeting {
   id: string
   caseId: string
@@ -102,6 +104,11 @@ export interface Meeting {
     role: string
     status: 'invited' | 'confirmed' | 'refused' | 'attended' | 'absent'
     refusalReason?: string
+    absentReason?: string
+    claims?: string
+    isKeyParty?: boolean
+    phone?: string
+    participantType?: ParticipantType
   }[]
   requirements: string[]
   evidenceMaterials: {
@@ -151,6 +158,8 @@ export interface Agreement {
   effectiveTime?: string
 }
 
+export type FulfillmentCategory = 'move_car' | 'pay_fee' | 'repair_leak' | 'apologize' | 'other'
+
 export interface FulfillmentNode {
   id: string
   agreementId: string
@@ -159,10 +168,16 @@ export interface FulfillmentNode {
   description: string
   deadline: string
   responsibleParty: string
+  responsiblePartyId?: string
   status: 'pending' | 'in_progress' | 'completed' | 'overdue' | 'violated'
   completeTime?: string
   proofUrls?: string[]
+  proofImages?: { id: string; name: string; url: string; uploadTime: string }[]
   remarks?: string
+  category?: FulfillmentCategory
+  supervisionRequired?: boolean
+  supervisionTime?: string
+  supervisionHandler?: string
 }
 
 export interface Followup {
