@@ -116,6 +116,21 @@
           <li class="flex items-start"><CheckCircle class="w-4 h-4 text-green-500 mt-0.5 mr-2 shrink-0" />重大群体性纠纷请立即电话上报</li>
         </ul>
       </div>
+      <div v-if="similarCases.length > 0" class="card border-orange-200 bg-orange-50/50">
+        <h3 class="font-bold text-orange-800 mb-3 flex items-center"><AlertTriangle class="w-5 h-5 mr-2" />检测到历史案件</h3>
+        <p class="text-xs text-orange-700 mb-3">系统检测到同一位当事人曾有过类似纠纷记录，请特别注意：</p>
+        <div class="space-y-2 max-h-64 overflow-y-auto">
+          <div v-for="sc in similarCases" :key="sc.id" class="p-2.5 bg-white rounded-lg border border-orange-100 hover:border-orange-300 cursor-pointer transition-colors" @click="router.push(`/case/${sc.id}`)">
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-mono text-xs text-gray-400">{{ sc.caseNo }}</span>
+              <span class="badge" :class="scCls(sc.status)">{{ scTxt(sc.status) }}</span>
+            </div>
+            <p class="text-sm font-medium text-gray-800 line-clamp-1">{{ sc.title }}</p>
+            <p class="text-xs text-gray-500 mt-1">登记：{{ d(sc.submitTime) }}</p>
+          </div>
+        </div>
+        <p class="text-xs text-orange-600 mt-3">💡 提示：受理后可在案件详情页进行合并处理</p>
+      </div>
     </div>
     <Teleport to="body">
       <div v-if="showResult" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="showResult = false">
@@ -136,17 +151,19 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, X, Upload, Send, Lightbulb, Info, CheckCircle } from 'lucide-vue-next'
-import { clueApi } from '../api'
+import dayjs from 'dayjs'
+import { Plus, X, Upload, Send, Lightbulb, Info, CheckCircle, AlertTriangle } from 'lucide-vue-next'
+import { clueApi, caseApi } from '../api'
 import { useUserStore } from '../stores/user'
-import type { DisputeCategory, Clue, Party } from '../types'
+import type { DisputeCategory, Clue, Party, Case, CaseStatus } from '../types'
 
 const store = useUserStore()
 const router = useRouter()
 const showResult = ref(false)
 const submittedClue = ref<Clue | null>(null)
+const similarCases = ref<Case[]>([])
 
 const form = reactive({
   title: '', category: 'neighbor' as DisputeCategory, priority: 'medium',
@@ -155,6 +172,23 @@ const form = reactive({
   needSiteVisit: false,
   parties: [{ role: 'plaintiff' as const, name: '', phone: '', address: '' }] as Party[]
 })
+
+function d(t: string, full = false) { return dayjs(t).format(full ? 'MM-DD HH:mm' : 'YYYY-MM-DD') }
+function scTxt(s: CaseStatus) { return { clue_submitted: '待受理', clue_accepted: '已受理', assigned: '已分派', meeting_scheduled: '会议排期', meeting_refused: '拒绝参会', meeting_completed: '会议完成', agreement_drafted: '协议草拟', agreement_signed: '协议已签', agreement_rejected: '协议被拒', fulfillment_start: '履行中', fulfillment_overdue: '履行逾期', fulfillment_completed: '履行完成', followup_pending: '待回访', followup_completed: '回访完成', escalated: '情绪升级', case_closed: '结案', repeat_complaint: '重复投诉', merged: '已合并' }[s] || s }
+function scCls(s: CaseStatus) { return { clue_submitted: 'status-pending', clue_accepted: 'status-pending', assigned: 'bg-blue-100 text-blue-700', meeting_scheduled: 'bg-purple-100 text-purple-700', meeting_refused: 'status-rejected', meeting_completed: 'bg-indigo-100 text-indigo-700', agreement_drafted: 'bg-violet-100 text-violet-700', agreement_signed: 'bg-teal-100 text-teal-700', agreement_rejected: 'status-rejected', fulfillment_start: 'status-progress', fulfillment_overdue: 'status-overdue', fulfillment_completed: 'status-completed', followup_pending: 'bg-cyan-100 text-cyan-700', followup_completed: 'status-completed', escalated: 'status-escalated', case_closed: 'status-completed', repeat_complaint: 'bg-orange-100 text-orange-700', merged: 'bg-gray-200 text-gray-700' }[s] || '' }
+
+let searchTimer: any = null
+watch(() => form.parties.map(p => p.name).join(','), () => {
+  clearTimeout(searchTimer)
+  const firstName = form.parties.find(p => p.name.trim())?.name.trim()
+  if (!firstName) {
+    similarCases.value = []
+    return
+  }
+  searchTimer = setTimeout(async () => {
+    similarCases.value = await caseApi.findSimilar(firstName, form.category)
+  }, 500)
+}, { deep: true })
 
 const tips = [
   { title: '邻里噪声类', desc: '多发生于夜间，涉及装修、家电、乐器、宠物、娱乐活动等，需记录时间频率及取证方式', cat: 'noise' as DisputeCategory },

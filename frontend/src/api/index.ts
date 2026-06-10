@@ -83,6 +83,59 @@ export const caseApi = {
       if (res.ok) return res.json()
     } catch {}
     return mock.getSupervisionCases()
+  },
+  async findSimilar(partyName: string, category?: string, excludeId?: string) {
+    try {
+      const params: any = { partyName }
+      if (category) params.category = category
+      if (excludeId) params.excludeId = excludeId
+      const query = '?' + new URLSearchParams(params).toString()
+      const res = await fetch(`/api/cases/similar${query}`)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.findSimilarCases(partyName, category, excludeId)
+  },
+  async getWarnings(id: string) {
+    try {
+      const res = await fetch(`/api/cases/${id}/warnings`)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getCaseWarnings(id)
+  },
+  async addWarning(id: string, data: any) {
+    try {
+      const res = await post(`/api/cases/${id}/warnings`, data)
+      if (res.ok) return res.json()
+    } catch {}
+    return null
+  },
+  async setEscalationAction(id: string, action: string, operatorName?: string) {
+    try {
+      const res = await post(`/api/cases/${id}/escalation-action`, { action, operatorName })
+      if (res.ok) return res.json()
+    } catch {}
+    return null
+  },
+  async getMergeRecords(id: string) {
+    try {
+      const res = await fetch(`/api/cases/${id}/merge-records`)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getCaseMergeRecords(id)
+  },
+  async getMergedInfo(id: string) {
+    try {
+      const res = await fetch(`/api/cases/${id}/merged-info`)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getMergedCaseInfo(id)
+  },
+  async mergeCase(mainCaseId: string, mergedCaseId: string, reason: string, operatorName?: string) {
+    try {
+      const res = await post(`/api/cases/${mainCaseId}/merge`, { mergedCaseId, reason, operatorName })
+      if (res.ok) return res.json()
+    } catch {}
+    return null
   }
 }
 

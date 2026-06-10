@@ -606,6 +606,68 @@ export function useMockData() {
       }
       return f
     },
-    getUpcomingFollowups() { return followups.filter(f => f.status === 'pending' || f.status === 'overdue') }
+    getUpcomingFollowups() { return followups.filter(f => f.status === 'pending' || f.status === 'overdue') },
+    
+    findSimilarCases(partyName: string, category?: string, excludeCaseId?: string) {
+      const name = partyName.toLowerCase().trim()
+      return cases.filter(c => {
+        if (excludeCaseId && c.id === excludeCaseId) return false
+        if (category && c.category !== category) return false
+        return c.parties.some(p => p.name.toLowerCase().includes(name) || name.includes(p.name.toLowerCase()))
+      })
+    },
+    
+    getCaseWarnings(caseId: string) {
+      const warnings: any[] = []
+      const f = followups.find(ff => ff.caseId === caseId && ff.result && (ff.result.hasThreat || ff.result.hasGathering || ff.result.hasVerbalAbuse))
+      if (f && f.result) {
+        if (f.result.hasThreat) {
+          warnings.push({ id: 'W001', caseId, type: 'threat', description: '回访中发现威胁言论', reporterId: f.handlerId, reporterName: f.handlerName, reportTime: f.result.recordTime, sourceType: 'followup', sourceId: f.id })
+        }
+        if (f.result.hasGathering) {
+          warnings.push({ id: 'W002', caseId, type: 'gathering', description: '回访中发现聚集倾向', reporterId: f.handlerId, reporterName: f.handlerName, reportTime: f.result.recordTime, sourceType: 'followup', sourceId: f.id })
+        }
+        if (f.result.hasVerbalAbuse) {
+          warnings.push({ id: 'W003', caseId, type: 'verbal_abuse', description: '回访中发现持续辱骂', reporterId: f.handlerId, reporterName: f.handlerName, reportTime: f.result.recordTime, sourceType: 'followup', sourceId: f.id })
+        }
+      }
+      return warnings
+    },
+    
+    getCaseMergeRecords(caseId: string) {
+      const records: any[] = []
+      const c = cases.find(cc => cc.id === caseId)
+      if (c?.mergedFrom) {
+        c.mergedFrom.forEach((mid, i) => {
+          records.push({
+            id: 'MR' + (i + 1),
+            mainCaseId: caseId,
+            mergedCaseId: mid,
+            mergeTime: now.subtract(i + 1, 'day').format(),
+            operatorId: 'md1',
+            operatorName: '李调解员',
+            reason: '同一当事人同一事项，合并处理'
+          })
+        })
+      }
+      return records
+    },
+    
+    getMergedCaseInfo(caseId: string) {
+      const c = cases.find(cc => cc.id === caseId)
+      if (!c) return null
+      const mainCase = c.mergedInto ? cases.find(cc => cc.id === c.mergedInto) : null
+      const mergedCases = c.mergedFrom ? cases.filter(cc => c.mergedFrom?.includes(cc.id)) : []
+      const caseAgreements = agreements.filter(a => a.caseId === caseId)
+      const caseFollowups = followups.filter(f => f.caseId === caseId)
+      return {
+        case: c,
+        mainCase,
+        mergedCases,
+        mergeRecords: this.getCaseMergeRecords(caseId),
+        agreements: caseAgreements,
+        followups: caseFollowups
+      }
+    }
   }
 }

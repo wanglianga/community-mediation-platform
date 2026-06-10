@@ -131,7 +131,7 @@ const statusMap: Record<CaseStatus, string> = {
   agreement_drafted: '协议草拟', agreement_signed: '协议已签', agreement_rejected: '协议被拒',
   fulfillment_start: '履行中', fulfillment_overdue: '履行逾期', fulfillment_completed: '履行完成',
   followup_pending: '待回访', followup_completed: '回访完成', escalated: '情绪升级',
-  case_closed: '结案', repeat_complaint: '重复投诉'
+  case_closed: '结案', repeat_complaint: '重复投诉', merged: '已合并'
 }
 
 const sc: Record<CaseStatus, string> = {
@@ -140,7 +140,7 @@ const sc: Record<CaseStatus, string> = {
   agreement_drafted: 'bg-violet-100 text-violet-700', agreement_signed: 'bg-teal-100 text-teal-700', agreement_rejected: 'status-rejected',
   fulfillment_start: 'status-progress', fulfillment_overdue: 'status-overdue', fulfillment_completed: 'status-completed',
   followup_pending: 'bg-cyan-100 text-cyan-700', followup_completed: 'status-completed', escalated: 'status-escalated',
-  case_closed: 'status-completed', repeat_complaint: 'bg-orange-100 text-orange-700'
+  case_closed: 'status-completed', repeat_complaint: 'bg-orange-100 text-orange-700', merged: 'bg-gray-200 text-gray-700'
 }
 function catLabel(v: DisputeCategory) { return cats.find(x => x.value === v)?.label || v }
 function cardBorder(s: CaseStatus) {

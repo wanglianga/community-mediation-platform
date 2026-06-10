@@ -119,6 +119,99 @@ export class CasesService {
   }
 
   getSupervisionCases() {
-    return this.store.cases.filter(c => c.isMajor || c.status === 'escalated' || c.status === 'fulfillment_overdue' || c.status === 'repeat_complaint' || (c.repeatCount || 0) >= 2 || (c.emotionLevel || 0) >= 4);
+    return this.store.cases.filter(c => c.isMajor || c.status === 'escalated' || c.status === 'fulfillment_overdue' || c.status === 'repeat_complaint' || (c.repeatCount || 0) >= 2 || (c.emotionLevel || 0) >= 4 || c.isKeyFocus);
+  }
+
+  getWarnings(caseId: string) {
+    return this.store.getCaseWarnings(caseId);
+  }
+
+  addWarning(caseId: string, data: any) {
+    const c = this.store.cases.find(x => x.id === caseId);
+    if (!c) return null;
+    const warning = this.store.addEmotionWarning({
+      caseId,
+      type: data.type || 'other',
+      description: data.description || '',
+      reporterId: data.reporterId || '',
+      reporterName: data.reporterName || '',
+      sourceType: data.sourceType || 'followup',
+      sourceId: data.sourceId
+    });
+    c.isKeyFocus = true;
+    c.emotionLevel = Math.min(5, (c.emotionLevel || 3) + 1);
+    if (data.type === 'threat' || data.type === 'gathering') {
+      c.isMajor = true;
+      if (c.status !== 'escalated') {
+        c.status = 'escalated';
+      }
+    }
+    const typeMap: any = { threat: '威胁言论', gathering: '聚集倾向', verbal_abuse: '持续辱骂', other: '其他异常' };
+    this.store.addTimeline(caseId, 'emotion_warning', '情绪预警：' + typeMap[data.type] || '情绪预警', data.description || '网格员回访发现异常情况', data.reporterName || '系统');
+    return warning;
+  }
+
+  setEscalationAction(caseId: string, action: string, operatorName?: string) {
+    const c = this.store.cases.find(x => x.id === caseId);
+    if (!c) return null;
+    c.escalationAction = action as any;
+    c.isKeyFocus = true;
+    const actionMap: any = { joint_mediation: '联席调解', legal_aid: '法律援助', major_focus: '重点关注' };
+    this.store.addTimeline(caseId, 'escalation_action', '升级处置：' + (actionMap[action] || action), '司法所启动升级处置措施', operatorName || '司法所');
+    return c;
+  }
+
+  findSimilarCases(partyName: string, category?: string, excludeCaseId?: string) {
+    return this.store.findSimilarCases(partyName, category || '', excludeCaseId);
+  }
+
+  getMergeRecords(caseId: string) {
+    return this.store.getCaseMergeRecords(caseId);
+  }
+
+  mergeCases(mainCaseId: string, mergedCaseId: string, data: any) {
+    const mainCase = this.store.cases.find(x => x.id === mainCaseId);
+    const mergedCase = this.store.cases.find(x => x.id === mergedCaseId);
+    if (!mainCase || !mergedCase) return null;
+    const record = this.store.addMergeRecord({
+      mainCaseId,
+      mergedCaseId,
+      operatorId: data.operatorId || '',
+      operatorName: data.operatorName || '',
+      reason: data.reason || ''
+    });
+    if (!mainCase.mergedFrom) mainCase.mergedFrom = [];
+    if (!mainCase.mergedFrom.includes(mergedCaseId)) {
+      mainCase.mergedFrom.push(mergedCaseId);
+    }
+    mergedCase.mergedInto = mainCaseId;
+    mergedCase.status = 'merged';
+    mainCase.repeatCount = (mainCase.repeatCount || 0) + 1;
+    mainCase.emotionLevel = Math.min(5, (mainCase.emotionLevel || 3) + 1);
+    if ((mainCase.repeatCount || 0) >= 2) {
+      mainCase.isMajor = true;
+      mainCase.isKeyFocus = true;
+    }
+    this.store.addTimeline(mainCaseId, 'case_merge', '案件合并：并入 ' + mergedCase.caseNo, data.reason || '同一当事人同一事项，合并处理', data.operatorName || '调解员');
+    this.store.addTimeline(mergedCaseId, 'case_merged', '案件合并：并入 ' + mainCase.caseNo, data.reason || '同一当事人同一事项，合并处理', data.operatorName || '调解员');
+    return { mainCase, mergedCase, record };
+  }
+
+  getMergedCaseInfo(caseId: string) {
+    const c = this.store.cases.find(x => x.id === caseId);
+    if (!c) return null;
+    const mainCase = c.mergedInto ? this.store.cases.find(x => x.id === c.mergedInto) : null;
+    const mergedCases = c.mergedFrom ? this.store.cases.filter(x => c.mergedFrom?.includes(x.id)) : [];
+    const mergeRecords = this.store.getCaseMergeRecords(caseId);
+    const agreements = this.store.agreements.filter(a => a.caseId === caseId);
+    const followups = this.store.followups.filter(f => f.caseId === caseId);
+    return {
+      case: c,
+      mainCase,
+      mergedCases,
+      mergeRecords,
+      agreements,
+      followups
+    };
   }
 }

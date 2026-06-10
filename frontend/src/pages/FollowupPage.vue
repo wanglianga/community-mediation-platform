@@ -121,8 +121,41 @@
                 ⚠️ 如存在新纠纷，提交后案件将自动升级为"重复投诉"，进入司法所督办范围。
               </div>
             </div>
+            <div class="p-4 bg-rose-50 rounded-xl border border-rose-100">
+              <label class="label-base !text-rose-700 !font-semibold mb-3">情绪预警标记（网格员回访发现）</label>
+              <div class="grid grid-cols-3 gap-3 mb-3">
+                <label class="flex items-center space-x-2 p-3 bg-white rounded-lg border cursor-pointer hover:border-rose-300 transition-colors" :class="rf.hasThreat ? 'border-rose-500 bg-rose-50' : 'border-gray-200'">
+                  <input type="checkbox" v-model="rf.hasThreat" class="w-4 h-4 text-rose-600" />
+                  <div>
+                    <p class="text-sm font-medium text-gray-800">⚠️ 威胁言论</p>
+                    <p class="text-xs text-gray-500">扬言报复、伤人等</p>
+                  </div>
+                </label>
+                <label class="flex items-center space-x-2 p-3 bg-white rounded-lg border cursor-pointer hover:border-rose-300 transition-colors" :class="rf.hasGathering ? 'border-rose-500 bg-rose-50' : 'border-gray-200'">
+                  <input type="checkbox" v-model="rf.hasGathering" class="w-4 h-4 text-rose-600" />
+                  <div>
+                    <p class="text-sm font-medium text-gray-800">👥 聚集倾向</p>
+                    <p class="text-xs text-gray-500">串联他人、围堵等</p>
+                  </div>
+                </label>
+                <label class="flex items-center space-x-2 p-3 bg-white rounded-lg border cursor-pointer hover:border-rose-300 transition-colors" :class="rf.hasVerbalAbuse ? 'border-rose-500 bg-rose-50' : 'border-gray-200'">
+                  <input type="checkbox" v-model="rf.hasVerbalAbuse" class="w-4 h-4 text-rose-600" />
+                  <div>
+                    <p class="text-sm font-medium text-gray-800">💢 持续辱骂</p>
+                    <p class="text-xs text-gray-500">人身攻击、谩骂等</p>
+                  </div>
+                </label>
+              </div>
+              <div v-if="rf.hasThreat || rf.hasGathering || rf.hasVerbalAbuse">
+                <label class="label-base !text-rose-700 text-xs">具体情况描述</label>
+                <textarea v-model="rf.emotionWarningDescription" rows="2" class="input-base resize-none !border-rose-200 !focus:border-rose-400" placeholder="请描述情绪预警的具体情况、当事人言行、严重程度..."></textarea>
+                <div class="mt-2 p-2 bg-rose-100/50 rounded-lg text-xs text-rose-700">
+                  🚨 标记后案件将自动升级为"重点关注"，威胁/聚集类直接触发情绪升级，进入司法所督办。
+                </div>
+              </div>
+            </div>
             <div><label class="label-base">回访记录 <span class="text-red-500">*</span></label>
-              <textarea v-model="rf.notes" rows="5" class="input-base resize-none" placeholder="请详细记录回访过程：当事人反馈、当前生活情况、协议履行细节、调解后续建议..." required></textarea>
+              <textarea v-model="rf.notes" rows="4" class="input-base resize-none" placeholder="请详细记录回访过程：当事人反馈、当前生活情况、协议履行细节、调解后续建议..." required></textarea>
             </div>
             <div class="flex justify-end space-x-3 pt-4 border-t border-gray-100">
               <button type="button" @click="showResult = null" class="btn-outline">取消</button>
@@ -179,7 +212,7 @@ const fType = ref('')
 const showResult = ref<Followup | null>(null)
 const showCreate = ref(false)
 
-const rf = reactive({ satisfaction: 5, emotionalState: 'stable', performanceStatus: 'normal', hasDispute: false, disputeDescription: '', notes: '' })
+const rf = reactive({ satisfaction: 5, emotionalState: 'stable', performanceStatus: 'normal', hasDispute: false, disputeDescription: '', notes: '', hasThreat: false, hasGathering: false, hasVerbalAbuse: false, emotionWarningDescription: '' })
 const nf = reactive({ caseId: '', type: 'phone' as Followup['type'], scheduledTime: dayjs().add(3, 'day').hour(10).minute(0).format('YYYY-MM-DDTHH:mm') })
 
 function stText(s: string) { return { pending: '待回访', completed: '回访完成', overdue: '已逾期', in_progress: '回访中' }[s] || s }
@@ -217,6 +250,7 @@ function openResult(f: Followup) {
   showResult.value = f
   rf.satisfaction = 5; rf.emotionalState = 'stable'; rf.performanceStatus = 'normal'
   rf.hasDispute = false; rf.disputeDescription = ''; rf.notes = ''
+  rf.hasThreat = false; rf.hasGathering = false; rf.hasVerbalAbuse = false; rf.emotionWarningDescription = ''
 }
 async function submitResult() {
   if (!showResult.value) return
@@ -224,7 +258,9 @@ async function submitResult() {
     satisfaction: rf.satisfaction, emotionalState: rf.emotionalState as any,
     performanceStatus: rf.performanceStatus as any, hasDispute: rf.hasDispute,
     disputeDescription: rf.disputeDescription || undefined, notes: rf.notes,
-    recordTime: dayjs().format()
+    recordTime: dayjs().format(),
+    hasThreat: rf.hasThreat, hasGathering: rf.hasGathering, hasVerbalAbuse: rf.hasVerbalAbuse,
+    emotionWarningDescription: rf.emotionWarningDescription || undefined
   })
   showResult.value = null
   list.value = await followupApi.list()

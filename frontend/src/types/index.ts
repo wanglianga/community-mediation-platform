@@ -27,6 +27,32 @@ export type CaseStatus =
   | 'escalated'           // 情绪升级
   | 'case_closed'         // 案件结案
   | 'repeat_complaint'    // 重复投诉
+  | 'merged'              // 已合并
+
+export type EmotionWarningType = 'threat' | 'gathering' | 'verbal_abuse' | 'other'
+export type EscalationAction = 'joint_mediation' | 'legal_aid' | 'major_focus'
+
+export interface EmotionWarning {
+  id: string
+  caseId: string
+  type: EmotionWarningType
+  description: string
+  reporterId: string
+  reporterName: string
+  reportTime: string
+  sourceType: 'followup' | 'meeting' | 'clue'
+  sourceId?: string
+}
+
+export interface CaseMergeRecord {
+  id: string
+  mainCaseId: string
+  mergedCaseId: string
+  mergeTime: string
+  operatorId: string
+  operatorName: string
+  reason: string
+}
 
 export type DisputeCategory = 'noise' | 'parking' | 'property' | 'support' | 'neighbor' | 'family' | 'contract' | 'other'
 
@@ -69,6 +95,10 @@ export interface Case {
   emotionLevel?: number
   refusalCount?: number
   overdueCount?: number
+  isKeyFocus?: boolean
+  escalationAction?: EscalationAction
+  mergedFrom?: string[]
+  mergedInto?: string
 }
 
 export interface Clue {
@@ -197,6 +227,10 @@ export interface Followup {
     performanceStatus: 'normal' | 'delayed' | 'problematic'
     notes: string
     recordTime: string
+    hasThreat?: boolean
+    hasGathering?: boolean
+    hasVerbalAbuse?: boolean
+    emotionWarningDescription?: string
   }
   createTime: string
 }

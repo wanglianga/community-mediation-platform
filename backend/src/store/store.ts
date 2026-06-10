@@ -6,14 +6,28 @@ const now = dayjs();
 export type CaseStatus = string;
 export type DisputeCategory = string;
 export type PriorityLevel = string;
+export type EmotionWarningType = 'threat' | 'gathering' | 'verbal_abuse' | 'other';
+export type EscalationAction = 'joint_mediation' | 'legal_aid' | 'major_focus';
 
 export interface Party { id: string; name: string; phone: string; address?: string; role: string; }
+export interface EmotionWarning {
+  id: string; caseId: string; type: EmotionWarningType; description: string;
+  reporterId: string; reporterName: string; reportTime: string;
+  sourceType: 'followup' | 'meeting' | 'clue'; sourceId?: string;
+}
+export interface CaseMergeRecord {
+  id: string; mainCaseId: string; mergedCaseId: string;
+  mergeTime: string; operatorId: string; operatorName: string;
+  reason: string;
+}
 export interface Case {
   id: string; caseNo: string; title: string; category: DisputeCategory; status: CaseStatus; priority: PriorityLevel;
   description: string; gridWorkerId?: string; gridWorkerName?: string; mediatorId?: string; mediatorName?: string;
   judicialStaffId?: string; judicialStaffName?: string; parties: Party[]; submitTime: string; acceptTime?: string;
   assignTime?: string; closeTime?: string; dueDate?: string; location: string; tags?: string[];
   isMajor?: boolean; isOverdue?: boolean; repeatCount?: number; emotionLevel?: number; refusalCount?: number; overdueCount?: number;
+  isKeyFocus?: boolean; escalationAction?: EscalationAction;
+  mergedFrom?: string[]; mergedInto?: string;
 }
 export interface Clue {
   id: string; title: string; category: DisputeCategory; description: string; location: string;
@@ -49,6 +63,8 @@ export interface FulfillmentNode {
 export interface FollowupResult {
   satisfaction: number; hasDispute: boolean; disputeDescription?: string; emotionalState: string;
   performanceStatus: string; notes: string; recordTime: string;
+  hasThreat?: boolean; hasGathering?: boolean; hasVerbalAbuse?: boolean;
+  emotionWarningDescription?: string;
 }
 export interface Followup {
   id: string; caseId: string; agreementId?: string; type: string; scheduledTime: string; handlerId: string; handlerName: string;
@@ -63,6 +79,8 @@ let agreementIdCounter = 4000;
 let followupIdCounter = 5000;
 let tlIdCounter = 6000;
 let nodeIdCounter = 7000;
+let warnIdCounter = 8000;
+let mergeIdCounter = 9000;
 
 @Injectable()
 export class InMemoryStore implements OnModuleInit {
@@ -73,6 +91,8 @@ export class InMemoryStore implements OnModuleInit {
   fulfillmentNodes: FulfillmentNode[] = [];
   followups: Followup[] = [];
   timelines: Timeline[] = [];
+  emotionWarnings: EmotionWarning[] = [];
+  mergeRecords: CaseMergeRecord[] = [];
 
   onModuleInit() {
     this.seed();
@@ -321,11 +341,50 @@ export class InMemoryStore implements OnModuleInit {
   nextFollowupId() { return 'F' + (++followupIdCounter); }
   nextTlId() { return 'TL' + (++tlIdCounter); }
   nextNodeId() { return 'N' + (++nodeIdCounter); }
+  nextWarnId() { return 'W' + (++warnIdCounter); }
+  nextMergeId() { return 'MR' + (++mergeIdCounter); }
 
   addTimeline(caseId: string, eventType: string, title: string, description: string, operatorName?: string) {
     this.timelines.push({
       id: this.nextTlId(), caseId, eventType, title, description,
       operatorName, timestamp: now.format()
+    });
+  }
+
+  addEmotionWarning(warning: Omit<EmotionWarning, 'id' | 'reportTime'>) {
+    const w: EmotionWarning = {
+      ...warning,
+      id: this.nextWarnId(),
+      reportTime: dayjs().format()
+    };
+    this.emotionWarnings.unshift(w);
+    return w;
+  }
+
+  addMergeRecord(record: Omit<CaseMergeRecord, 'id' | 'mergeTime'>) {
+    const r: CaseMergeRecord = {
+      ...record,
+      id: this.nextMergeId(),
+      mergeTime: dayjs().format()
+    };
+    this.mergeRecords.unshift(r);
+    return r;
+  }
+
+  getCaseWarnings(caseId: string) {
+    return this.emotionWarnings.filter(w => w.caseId === caseId);
+  }
+
+  getCaseMergeRecords(caseId: string) {
+    return this.mergeRecords.filter(r => r.mainCaseId === caseId || r.mergedCaseId === caseId);
+  }
+
+  findSimilarCases(partyName: string, category: string, excludeCaseId?: string) {
+    const name = partyName.toLowerCase().trim();
+    return this.cases.filter(c => {
+      if (excludeCaseId && c.id === excludeCaseId) return false;
+      if (category && c.category !== category) return false;
+      return c.parties.some(p => p.name.toLowerCase().includes(name) || name.includes(p.name.toLowerCase()));
     });
   }
 }
