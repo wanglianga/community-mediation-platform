@@ -122,6 +122,123 @@ export class CasesService {
     return this.store.cases.filter(c => c.isMajor || c.status === 'escalated' || c.status === 'fulfillment_overdue' || c.status === 'repeat_complaint' || (c.repeatCount || 0) >= 2 || (c.emotionLevel || 0) >= 4 || c.isKeyFocus);
   }
 
+  getOverdueCases() {
+    return this.store.getOverdueCases();
+  }
+
+  getMajorCases() {
+    return this.store.getMajorCases();
+  }
+
+  checkAndHandleRelapse(clueData: any) {
+    const parties = clueData.parties || [];
+    let firstName = '';
+    if (parties.length > 0) {
+      const firstParty = parties[0];
+      firstName = typeof firstParty === 'string' ? firstParty : (firstParty.name || firstParty || '');
+    }
+    firstName = firstName || clueData.informantName || clueData.reporterName || clueData.submitterName || '';
+    if (!firstName) return { isRepeat: false, matches: [] };
+    
+    const category = clueData.category || clueData.type || 'other';
+    const description = clueData.description || clueData.remarks || '';
+    const title = clueData.title || '';
+    
+    const originalCase = this.store.findRepeatComplaint(firstName, category, description);
+    
+    if (originalCase) {
+      const matches = [{
+        caseId: originalCase.id,
+        caseNo: originalCase.caseNo,
+        title: originalCase.title,
+        status: originalCase.status,
+        matchScore: originalCase._matchScore || 80,
+        matchReasons: originalCase._matchReasons || ['当事人姓名匹配', '类别匹配', '描述关键词匹配']
+      }];
+      return { isRepeat: true, matches };
+    }
+    return { isRepeat: false, matches: [] };
+  }
+
+  createCaseWithRelapseCheck(clueData: any, originalCaseId?: string) {
+    const newCase = this.create(clueData);
+    
+    if (originalCaseId) {
+      const originalCase = this.store.cases.find(c => c.id === originalCaseId);
+      if (originalCase) {
+        originalCase.status = 'pending_mediation';
+        originalCase.isRelapse = true;
+        originalCase.isKeyFocus = true;
+        originalCase.relapseCount = (originalCase.relapseCount || 0) + 1;
+        originalCase.repeatCount = (originalCase.repeatCount || 0) + 1;
+        originalCase.emotionLevel = Math.min(5, (originalCase.emotionLevel || 3) + 1);
+        if (originalCase.relapseCount >= 1) {
+          originalCase.isMajor = true;
+        }
+        
+        newCase.isRelapse = true;
+        newCase.originalCaseId = originalCaseId;
+        newCase.relapseCount = (originalCase.relapseCount || 0);
+        newCase.repeatCount = (originalCase.repeatCount || 0);
+        newCase.emotionLevel = Math.min(5, (originalCase.emotionLevel || 3) + 1);
+        newCase.isKeyFocus = true;
+        newCase.status = 'assigned';
+        
+        if (newCase.relapseCount >= 1) {
+          newCase.isMajor = true;
+        }
+        
+        this.store.addTimeline(originalCaseId, 'relapse', '案件复发', 
+          `同一当事人就同一事由再次登记线索，新案件编号：${newCase.caseNo}，案件状态已回退为待调解`, 
+          clueData.gridWorkerName || '系统');
+        
+        this.store.addTimeline(newCase.id, 'relapse', '关联原案件', 
+          `关联原案件：${originalCase.caseNo} - ${originalCase.title}`, 
+          clueData.gridWorkerName || '系统');
+        
+        const supervisionOrder = this.store.addSupervisionOrder({
+          caseId: originalCaseId,
+          caseNo: originalCase.caseNo,
+          caseTitle: originalCase.title,
+          type: 'relapse',
+          source: 'auto_relapse',
+          mediatorId: originalCase.mediatorId || 'md1',
+          mediatorName: originalCase.mediatorName || '李调解员',
+          status: 'pending',
+          deadline: dayjs().add(7, 'day').format(),
+          description: `案件复发，新案件编号：${newCase.caseNo}，需指派原调解员跟进处理。`,
+          supervisorId: originalCase.judicialStaffId,
+          supervisorName: originalCase.judicialStaffName,
+          relapseCaseId: newCase.id
+        });
+        
+        if (originalCase.mediatorId) {
+          newCase.mediatorId = originalCase.mediatorId;
+          newCase.mediatorName = originalCase.mediatorName;
+          newCase.assignTime = dayjs().format();
+        }
+      }
+    }
+    
+    return newCase;
+  }
+
+  getSupervisionOrders(params?: any) {
+    return this.store.getSupervisionOrders(params);
+  }
+
+  getSupervisionOrder(id: string) {
+    return this.store.getSupervisionOrder(id);
+  }
+
+  getCaseSupervisionOrders(caseId: string) {
+    return this.store.getCaseSupervisionOrders(caseId);
+  }
+
+  updateSupervisionOrder(id: string, data: any) {
+    return this.store.updateSupervisionOrder(id, data);
+  }
+
   getWarnings(caseId: string) {
     return this.store.getCaseWarnings(caseId);
   }

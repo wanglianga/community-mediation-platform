@@ -28,6 +28,31 @@ export type CaseStatus =
   | 'case_closed'         // 案件结案
   | 'repeat_complaint'    // 重复投诉
   | 'merged'              // 已合并
+  | 'supervision_pending' // 待督办
+  | 'relapse'             // 案件复发
+
+export type FulfillmentStatus = 'fulfilled' | 'partially_fulfilled' | 'not_fulfilled'
+
+export interface SupervisionOrder {
+  id: string
+  caseId: string
+  caseNo: string
+  caseTitle: string
+  type: 'overdue' | 'not_fulfilled' | 'major' | 'relapse'
+  source: 'auto_overdue' | 'followup_not_fulfilled' | 'auto_major' | 'auto_relapse'
+  mediatorId: string
+  mediatorName: string
+  supervisorId?: string
+  supervisorName?: string
+  status: 'pending' | 'in_progress' | 'completed' | 'closed'
+  deadline?: string
+  description: string
+  result?: string
+  createTime: string
+  assignTime?: string
+  completeTime?: string
+  followupId?: string
+}
 
 export type EmotionWarningType = 'threat' | 'gathering' | 'verbal_abuse' | 'other'
 export type EscalationAction = 'joint_mediation' | 'legal_aid' | 'major_focus'
@@ -99,6 +124,13 @@ export interface Case {
   escalationAction?: EscalationAction
   mergedFrom?: string[]
   mergedInto?: string
+  involvedAmount?: number
+  involvedPartiesCount?: number
+  hasPetitionRisk?: boolean
+  isRelapse?: boolean
+  relapseCount?: number
+  originalCaseId?: string
+  daysOverdue?: number
 }
 
 export interface Clue {
@@ -225,6 +257,8 @@ export interface Followup {
     disputeDescription?: string
     emotionalState: 'stable' | 'anxious' | 'angry' | 'depressed'
     performanceStatus: 'normal' | 'delayed' | 'problematic'
+    fulfillmentStatus: FulfillmentStatus
+    fulfillmentNotes?: string
     notes: string
     recordTime: string
     hasThreat?: boolean

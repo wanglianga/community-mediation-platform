@@ -11,10 +11,14 @@
               <span class="font-mono text-sm text-gray-400">{{ data.caseNo }}</span>
               <span v-if="data.isMajor" class="badge bg-red-100 text-red-700">重大纠纷</span>
               <span v-if="data.isKeyFocus" class="badge bg-purple-100 text-purple-700">⭐ 重点关注</span>
+              <span v-if="data.isRelapse" class="badge bg-orange-100 text-orange-700">🔄 已复发</span>
+              <span v-if="data.relapseCount && data.relapseCount > 0" class="badge bg-orange-100 text-orange-700">复发×{{ data.relapseCount }}</span>
               <span v-if="data.escalationAction === 'joint_mediation'" class="badge bg-indigo-100 text-indigo-700">联席调解</span>
               <span v-if="data.escalationAction === 'legal_aid'" class="badge bg-blue-100 text-blue-700">法律援助</span>
               <span v-if="(data.repeatCount || 0) > 0" class="badge bg-orange-100 text-orange-700">重复×{{ data.repeatCount }}</span>
               <span v-if="data.status === 'escalated'" class="badge bg-rose-100 text-rose-700">情绪升级</span>
+              <span v-if="data.status === 'supervision_pending'" class="badge bg-red-100 text-red-700">督办中</span>
+              <span v-if="data.status === 'relapse'" class="badge bg-orange-100 text-orange-700">已复发</span>
               <span v-if="data.status === 'merged'" class="badge bg-gray-300 text-gray-700">已合并</span>
               <span class="badge" :class="sc(data.status)">{{ st(data.status) }}</span>
             </div>
@@ -143,6 +147,40 @@
             </div>
           </div>
         </div>
+        <div class="card" v-if="data.originalCaseId">
+          <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center"><RefreshCw class="w-5 h-5 mr-2 text-orange-500" />关联原案件</h2>
+          <div class="p-3 bg-orange-50 rounded-lg border border-orange-200">
+            <p class="text-xs text-orange-600 mb-2">🔄 本案件为复发案件，关联原案件信息：</p>
+            <p class="text-sm font-medium text-orange-800 cursor-pointer hover:underline" @click="goCase(data.originalCaseId!)">
+              {{ originalCase?.caseNo }} - {{ originalCase?.title }} →
+            </p>
+            <p class="text-xs text-orange-600 mt-2">原案件状态：{{ originalCase ? st(originalCase.status) : '加载中...' }}</p>
+          </div>
+        </div>
+
+        <div class="card" v-if="supervisionOrders.length > 0">
+          <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center"><FileText class="w-5 h-5 mr-2 text-red-500" />督办记录</h2>
+          <div class="space-y-3">
+            <div v-for="o in supervisionOrders" :key="o.id" class="p-3 rounded-lg border" :class="o.status === 'completed' ? 'bg-green-50 border-green-200' : o.status === 'in_progress' ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-mono text-xs text-gray-500">{{ o.id }}</span>
+                <span class="badge" :class="{ 'bg-green-100 text-green-700': o.status === 'completed', 'bg-blue-100 text-blue-700': o.status === 'in_progress', 'bg-red-100 text-red-700': o.status === 'pending' }">
+                  {{ o.status === 'completed' ? '已完成' : o.status === 'in_progress' ? '处理中' : '待处理' }}
+                </span>
+              </div>
+              <p class="text-sm font-medium text-gray-800">{{ orderTypeText(o.type) }}</p>
+              <p class="text-xs text-gray-600 mt-1 line-clamp-2">{{ o.description }}</p>
+              <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                <span>指派：{{ o.mediatorName }}</span>
+                <span>截止：{{ d(o.deadline) }}</span>
+              </div>
+              <div v-if="o.result" class="mt-2 p-2 bg-white rounded text-xs text-gray-600">
+                <span class="font-medium">处理结果：</span>{{ o.result }}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="card" v-if="similarCases.length > 0">
           <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center"><AlertTriangle class="w-5 h-5 mr-2 text-orange-500" />相似/历史案件</h2>
           <div class="space-y-3">
@@ -196,13 +234,20 @@
           <div class="relative pl-7 space-y-5">
             <div class="absolute left-2.5 top-2 bottom-2 w-0.5 bg-gray-200"></div>
             <div v-for="(e, i) in timeline" :key="e.id" class="relative">
-              <div class="absolute -left-5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs shadow" :class="i === 0 ? 'bg-primary-500' : 'bg-gray-400'">
+              <div class="absolute -left-5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs shadow" :class="i === 0 ? 'bg-primary-500' : e.type === 'relapse' ? 'bg-orange-500' : e.type === 'supervision' ? 'bg-red-500' : 'bg-gray-400'">
                 <Check v-if="i !== timeline.length - 1" class="w-3 h-3" />
+                <RefreshCw v-else-if="e.type === 'relapse'" class="w-3 h-3" />
+                <AlertTriangle v-else-if="e.type === 'supervision'" class="w-3 h-3" />
                 <Circle v-else class="w-2.5 h-2.5 animate-pulse" />
               </div>
-              <div class="pt-0.5">
-                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-1"><span>{{ d(e.timestamp, true) }}</span><span v-if="e.operatorName">· {{ e.operatorName }}</span></div>
-                <h4 class="text-sm font-semibold text-gray-800">{{ e.title }}</h4>
+              <div class="pt-0.5" :class="e.type === 'relapse' ? 'pl-2 border-l-2 border-orange-200' : ''">
+                <div class="flex items-center space-x-2 text-xs text-gray-500 mb-1">
+                  <span>{{ d(e.timestamp, true) }}</span>
+                  <span v-if="e.operatorName">· {{ e.operatorName }}</span>
+                  <span v-if="e.type === 'relapse'" class="badge bg-orange-100 text-orange-700 !py-0 !px-1.5">🔄 复发</span>
+                  <span v-if="e.type === 'supervision'" class="badge bg-red-100 text-red-700 !py-0 !px-1.5">🚨 督办</span>
+                </div>
+                <h4 class="text-sm font-semibold" :class="e.type === 'relapse' ? 'text-orange-700' : e.type === 'supervision' ? 'text-red-700' : 'text-gray-800'">{{ e.title }}</h4>
                 <p class="text-xs text-gray-500 mt-0.5">{{ e.description }}</p>
               </div>
             </div>
@@ -295,8 +340,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
-import { FileText, Users, FileSignature, Calendar, Clock, TrendingUp, Check, Circle, ClipboardCheck, ArrowLeft, UserPlus, AlertTriangle, Zap, GitBranch, Merge } from 'lucide-vue-next'
-import type { Case, CaseTimeline, Meeting, Agreement, FulfillmentNode, PriorityLevel, DisputeCategory, EmotionWarning, EmotionWarningType } from '../types'
+import { FileText, Users, FileSignature, Calendar, Clock, TrendingUp, Check, Circle, ClipboardCheck, ArrowLeft, UserPlus, AlertTriangle, Zap, GitBranch, Merge, RefreshCw } from 'lucide-vue-next'
+import type { Case, CaseTimeline, Meeting, Agreement, FulfillmentNode, PriorityLevel, DisputeCategory, EmotionWarning, EmotionWarningType, SupervisionOrder } from '../types'
 import { caseApi, meetingApi, agreementApi } from '../api'
 import { useUserStore } from '../stores/user'
 
@@ -311,6 +356,8 @@ const agreementList = ref<Agreement[]>([])
 const fulfillmentNodes = ref<FulfillmentNode[]>([])
 const similarCases = ref<Case[]>([])
 const warnings = ref<EmotionWarning[]>([])
+const supervisionOrders = ref<SupervisionOrder[]>([])
+const originalCase = ref<Case | null>(null)
 const showAssign = ref(false)
 const showMerge = ref(false)
 const assignMediator = ref('md1|李调解员')
@@ -320,8 +367,11 @@ const mergeReason = ref('')
 const showActions = computed(() => store.canMediate || store.canSupervise)
 
 function d(t: string, full = false) { return dayjs(t).format(full ? 'MM-DD HH:mm' : 'YYYY-MM-DD') }
-function st(s: CaseStatus) { return { clue_submitted: '待受理', clue_accepted: '已受理', assigned: '已分派', meeting_scheduled: '会议排期', meeting_refused: '拒绝参会', meeting_completed: '会议完成', agreement_drafted: '协议草拟', agreement_signed: '协议已签', agreement_rejected: '协议被拒', fulfillment_start: '履行中', fulfillment_overdue: '履行逾期', fulfillment_completed: '履行完成', followup_pending: '待回访', followup_completed: '回访完成', escalated: '情绪升级', case_closed: '结案', repeat_complaint: '重复投诉', merged: '已合并' }[s] || s }
-function sc(s: CaseStatus) { return { clue_submitted: 'status-pending', clue_accepted: 'status-pending', assigned: 'bg-blue-100 text-blue-700', meeting_scheduled: 'bg-purple-100 text-purple-700', meeting_refused: 'status-rejected', meeting_completed: 'bg-indigo-100 text-indigo-700', agreement_drafted: 'bg-violet-100 text-violet-700', agreement_signed: 'bg-teal-100 text-teal-700', agreement_rejected: 'status-rejected', fulfillment_start: 'status-progress', fulfillment_overdue: 'status-overdue', fulfillment_completed: 'status-completed', followup_pending: 'bg-cyan-100 text-cyan-700', followup_completed: 'status-completed', escalated: 'status-escalated', case_closed: 'status-completed', repeat_complaint: 'bg-orange-100 text-orange-700', merged: 'bg-gray-200 text-gray-700' }[s] || '' }
+function st(s: CaseStatus) { return { clue_submitted: '待受理', clue_accepted: '已受理', assigned: '已分派', meeting_scheduled: '会议排期', meeting_refused: '拒绝参会', meeting_completed: '会议完成', agreement_drafted: '协议草拟', agreement_signed: '协议已签', agreement_rejected: '协议被拒', fulfillment_start: '履行中', fulfillment_overdue: '履行逾期', fulfillment_completed: '履行完成', followup_pending: '待回访', followup_completed: '回访完成', escalated: '情绪升级', case_closed: '结案', repeat_complaint: '重复投诉', merged: '已合并', supervision_pending: '督办中', relapse: '已复发' }[s] || s }
+function sc(s: CaseStatus) { return { clue_submitted: 'status-pending', clue_accepted: 'status-pending', assigned: 'bg-blue-100 text-blue-700', meeting_scheduled: 'bg-purple-100 text-purple-700', meeting_refused: 'status-rejected', meeting_completed: 'bg-indigo-100 text-indigo-700', agreement_drafted: 'bg-violet-100 text-violet-700', agreement_signed: 'bg-teal-100 text-teal-700', agreement_rejected: 'status-rejected', fulfillment_start: 'status-progress', fulfillment_overdue: 'status-overdue', fulfillment_completed: 'status-completed', followup_pending: 'bg-cyan-100 text-cyan-700', followup_completed: 'status-completed', escalated: 'status-escalated', case_closed: 'status-completed', repeat_complaint: 'bg-orange-100 text-orange-700', merged: 'bg-gray-200 text-gray-700', supervision_pending: 'bg-red-100 text-red-700', relapse: 'bg-orange-100 text-orange-700' }[s] || '' }
+function orderTypeText(t: string) {
+  return { not_fulfilled: '未履行督办', overdue: '超期督办', relapse: '复发督办', supervision: '常规督办' }[t] || t
+}
 function scTxt(s: CaseStatus) { return st(s) }
 function scCls(s: CaseStatus) { return sc(s) }
 function catL(c: DisputeCategory) { return { noise: '邻里噪声', parking: '停车占位', property: '物业收费', support: '家庭赡养', neighbor: '邻里纠纷', family: '家庭纠纷', contract: '合同纠纷', other: '其他' }[c] || c }
@@ -350,6 +400,10 @@ async function load() {
     }
   }
   warnings.value = await caseApi.getWarnings(id)
+  supervisionOrders.value = await caseApi.getCaseSupervisionOrders(id)
+  if (data.value?.originalCaseId) {
+    originalCase.value = await caseApi.get(data.value.originalCaseId)
+  }
 }
 function doAssign() { showAssign.value = true }
 async function submitAssign() {

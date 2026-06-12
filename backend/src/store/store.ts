@@ -8,6 +8,10 @@ export type DisputeCategory = string;
 export type PriorityLevel = string;
 export type EmotionWarningType = 'threat' | 'gathering' | 'verbal_abuse' | 'other';
 export type EscalationAction = 'joint_mediation' | 'legal_aid' | 'major_focus';
+export type FulfillmentStatus = 'fulfilled' | 'partially_fulfilled' | 'not_fulfilled';
+export type SupervisionOrderType = 'overdue' | 'not_fulfilled' | 'major' | 'relapse';
+export type SupervisionOrderSource = 'auto_overdue' | 'followup_not_fulfilled' | 'auto_major' | 'auto_relapse';
+export type SupervisionOrderStatus = 'pending' | 'in_progress' | 'completed' | 'closed';
 
 export interface Party { id: string; name: string; phone: string; address?: string; role: string; }
 export interface EmotionWarning {
@@ -28,11 +32,16 @@ export interface Case {
   isMajor?: boolean; isOverdue?: boolean; repeatCount?: number; emotionLevel?: number; refusalCount?: number; overdueCount?: number;
   isKeyFocus?: boolean; escalationAction?: EscalationAction;
   mergedFrom?: string[]; mergedInto?: string;
+  involvedAmount?: number; involvedPartiesCount?: number; hasPetitionRisk?: boolean;
+  isRelapse?: boolean; relapseCount?: number; originalCaseId?: string; daysOverdue?: number;
+  _matchScore?: number; _matchReasons?: string[];
 }
 export interface Clue {
   id: string; title: string; category: DisputeCategory; description: string; location: string;
   gridWorkerId: string; gridWorkerName: string; submitTime: string; informantName?: string; informantPhone?: string;
   caseId?: string; status: string; rejectReason?: string;
+  address?: string; reporterName?: string; reporterPhone?: string; categoryName?: string;
+  parties?: any[]; originalCaseId?: string; isRelapse?: boolean; relapseNotes?: string;
 }
 export interface MeetingParticipant {
   id: string; name: string; role: string; status: string;
@@ -65,10 +74,22 @@ export interface FollowupResult {
   performanceStatus: string; notes: string; recordTime: string;
   hasThreat?: boolean; hasGathering?: boolean; hasVerbalAbuse?: boolean;
   emotionWarningDescription?: string;
+  fulfillmentStatus: FulfillmentStatus;
+  fulfillmentNotes?: string;
 }
 export interface Followup {
   id: string; caseId: string; agreementId?: string; type: string; scheduledTime: string; handlerId: string; handlerName: string;
   status: string; result?: FollowupResult; createTime: string;
+}
+export interface SupervisionOrder {
+  id: string; caseId: string; caseNo: string; caseTitle: string;
+  type: SupervisionOrderType; source: SupervisionOrderSource;
+  mediatorId: string; mediatorName: string;
+  supervisorId?: string; supervisorName?: string;
+  status: SupervisionOrderStatus;
+  deadline?: string; description: string; result?: string;
+  createTime: string; assignTime?: string; completeTime?: string;
+  followupId?: string; relapseCaseId?: string;
 }
 export interface Timeline { id: string; caseId: string; eventType: string; title: string; description: string; operatorName?: string; timestamp: string; }
 
@@ -81,6 +102,7 @@ let tlIdCounter = 6000;
 let nodeIdCounter = 7000;
 let warnIdCounter = 8000;
 let mergeIdCounter = 9000;
+let supervisionIdCounter = 10000;
 
 @Injectable()
 export class InMemoryStore implements OnModuleInit {
@@ -93,6 +115,7 @@ export class InMemoryStore implements OnModuleInit {
   timelines: Timeline[] = [];
   emotionWarnings: EmotionWarning[] = [];
   mergeRecords: CaseMergeRecord[] = [];
+  supervisionOrders: SupervisionOrder[] = [];
 
   onModuleInit() {
     this.seed();
@@ -151,7 +174,8 @@ export class InMemoryStore implements OnModuleInit {
         ],
         submitTime: now.subtract(10, 'day').format(), acceptTime: now.subtract(9, 'day').format(),
         assignTime: now.subtract(8, 'day').format(), location: '和谐花园',
-        tags: ['群体性纠纷', '物业收费'], isMajor: true, repeatCount: 2, emotionLevel: 5
+        tags: ['群体性纠纷', '物业收费'], isMajor: true, repeatCount: 2, emotionLevel: 5,
+        involvedPartiesCount: 32, hasPetitionRisk: true
       },
       {
         id: 'C005', caseNo: 'MD-2024-005', title: '501室装修漏水致401室损坏索赔',
@@ -168,17 +192,19 @@ export class InMemoryStore implements OnModuleInit {
       },
       {
         id: 'C006', caseNo: 'MD-2024-006', title: '餐饮油烟扰民调解后反复投诉',
-        category: 'noise', status: 'repeat_complaint', priority: 'high',
+        category: 'environment', status: 'repeat_complaint', priority: 'high',
         description: '楼下餐厅油烟排放影响楼上住户，曾达成整改协议后再次反弹，业主情绪激动。',
         gridWorkerId: 'gw1', gridWorkerName: '张网格员', mediatorId: 'md1', mediatorName: '李调解员',
         judicialStaffId: 'js1', judicialStaffName: '赵司法所',
         parties: [
-          { id: 'P12', name: '住户联盟', phone: '13900000012', role: 'plaintiff' },
+          { id: 'P12', name: '王桂兰', phone: '138xxxx1112', role: 'plaintiff' },
+          { id: 'P121', name: '住户联盟', phone: '13900000012', role: 'plaintiff' },
           { id: 'P13', name: '家乡菜馆', phone: '13900000013', role: 'defendant' }
         ],
-        submitTime: now.subtract(30, 'day').format(), acceptTime: now.subtract(29, 'day').format(),
-        assignTime: now.subtract(27, 'day').format(), location: '美食街68号',
-        tags: ['重复投诉', '环境污染'], isMajor: true, repeatCount: 3, emotionLevel: 5, refusalCount: 1, overdueCount: 1
+        submitTime: now.subtract(35, 'day').format(), acceptTime: now.subtract(34, 'day').format(),
+        assignTime: now.subtract(32, 'day').format(), location: '美食街68号',
+        tags: ['重复投诉', '环境污染'], isMajor: true, repeatCount: 3, emotionLevel: 5, refusalCount: 1, overdueCount: 1,
+        involvedPartiesCount: 8
       },
       {
         id: 'C007', caseNo: 'MD-2024-007', title: '履行节点逾期未完成',
@@ -189,9 +215,9 @@ export class InMemoryStore implements OnModuleInit {
           { id: 'P14', name: '郑先生', phone: '13900000014', role: 'plaintiff' },
           { id: 'P15', name: '某装修公司', phone: '13900000015', role: 'defendant' }
         ],
-        submitTime: now.subtract(25, 'day').format(), acceptTime: now.subtract(24, 'day').format(),
-        assignTime: now.subtract(22, 'day').format(), location: '金桂小区',
-        tags: ['合同纠纷', '履行逾期'], overdueCount: 1, emotionLevel: 4
+        submitTime: now.subtract(40, 'day').format(), acceptTime: now.subtract(39, 'day').format(),
+        assignTime: now.subtract(37, 'day').format(), location: '金桂小区',
+        tags: ['合同纠纷', '履行逾期'], overdueCount: 1, emotionLevel: 4, involvedAmount: 85000
       },
       {
         id: 'C008', caseNo: 'MD-2024-008', title: '已结案：小区门禁系统费用分摊',
@@ -326,11 +352,34 @@ export class InMemoryStore implements OnModuleInit {
         id: 'F002', caseId: 'C008', type: 'home_visit',
         scheduledTime: now.subtract(2, 'day').hour(15).minute(0).format(),
         handlerId: 'gw1', handlerName: '张网格员', status: 'completed',
-        result: { satisfaction: 5, hasDispute: false, emotionalState: 'stable', performanceStatus: 'normal', notes: '双方对调解结果均满意，门禁系统已正常运行一月有余，邻里关系和睦。', recordTime: now.subtract(2, 'day').format() },
+        result: { satisfaction: 5, hasDispute: false, emotionalState: 'stable', performanceStatus: 'normal', fulfillmentStatus: 'fulfilled', notes: '双方对调解结果均满意，门禁系统已正常运行一月有余，邻里关系和睦。', recordTime: now.subtract(2, 'day').format() },
         createTime: now.subtract(5, 'day').format()
       },
       { id: 'F003', caseId: 'C006', type: 'onsite', scheduledTime: now.add(1, 'day').hour(9).minute(30).format(), handlerId: 'js1', handlerName: '赵司法所', status: 'pending', createTime: now.format() },
       { id: 'F004', caseId: 'C007', type: 'video', scheduledTime: now.subtract(1, 'day').hour(14).minute(0).format(), handlerId: 'md1', handlerName: '李调解员', status: 'overdue', createTime: now.subtract(3, 'day').format() }
+    ];
+
+    this.supervisionOrders = [
+      {
+        id: 'S001', caseId: 'C006', caseNo: 'MD-2024-006', caseTitle: '餐饮油烟扰民调解后反复投诉',
+        type: 'relapse', source: 'auto_relapse',
+        mediatorId: 'md1', mediatorName: '李调解员',
+        supervisorId: 'js1', supervisorName: '赵司法所',
+        status: 'in_progress',
+        deadline: now.add(5, 'day').format(),
+        description: '案件复发，需重新调解跟进。当事人反映油烟问题仍未解决，情绪激动。',
+        createTime: now.subtract(2, 'day').format(),
+        assignTime: now.subtract(2, 'day').format()
+      },
+      {
+        id: 'S002', caseId: 'C007', caseNo: 'MD-2024-007', caseTitle: '履行节点逾期未完成',
+        type: 'overdue', source: 'auto_overdue',
+        mediatorId: 'md1', mediatorName: '李调解员',
+        status: 'pending',
+        deadline: now.add(3, 'day').format(),
+        description: '履行节点逾期超过3天，需督办调解员跟进落实。',
+        createTime: now.subtract(1, 'day').format()
+      }
     ];
   }
 
@@ -343,6 +392,7 @@ export class InMemoryStore implements OnModuleInit {
   nextNodeId() { return 'N' + (++nodeIdCounter); }
   nextWarnId() { return 'W' + (++warnIdCounter); }
   nextMergeId() { return 'MR' + (++mergeIdCounter); }
+  nextSupervisionId() { return 'S' + (++supervisionIdCounter); }
 
   addTimeline(caseId: string, eventType: string, title: string, description: string, operatorName?: string) {
     this.timelines.push({
@@ -385,6 +435,130 @@ export class InMemoryStore implements OnModuleInit {
       if (excludeCaseId && c.id === excludeCaseId) return false;
       if (category && c.category !== category) return false;
       return c.parties.some(p => p.name.toLowerCase().includes(name) || name.includes(p.name.toLowerCase()));
+    });
+  }
+
+  addSupervisionOrder(order: Omit<SupervisionOrder, 'id' | 'createTime'>) {
+    const o: SupervisionOrder = {
+      ...order,
+      id: this.nextSupervisionId(),
+      createTime: dayjs().format()
+    };
+    this.supervisionOrders.unshift(o);
+    return o;
+  }
+
+  getSupervisionOrders(params?: any) {
+    return this.supervisionOrders.filter(o => {
+      if (params?.status && o.status !== params.status) return false;
+      if (params?.type && o.type !== params.type) return false;
+      if (params?.caseId && o.caseId !== params.caseId) return false;
+      return true;
+    });
+  }
+
+  getSupervisionOrder(id: string) {
+    return this.supervisionOrders.find(o => o.id === id) || null;
+  }
+
+  updateSupervisionOrder(id: string, data: any) {
+    const idx = this.supervisionOrders.findIndex(o => o.id === id);
+    if (idx >= 0) {
+      this.supervisionOrders[idx] = { ...this.supervisionOrders[idx], ...data };
+      return this.supervisionOrders[idx];
+    }
+    return null;
+  }
+
+  getCaseSupervisionOrders(caseId: string) {
+    return this.supervisionOrders.filter(o => o.caseId === caseId);
+  }
+
+  getOverdueCases() {
+    return this.cases.filter(c => {
+      if (c.status === 'case_closed' || c.status === 'merged') return false;
+      const days = dayjs().diff(dayjs(c.submitTime), 'day');
+      c.daysOverdue = Math.max(0, days - 30);
+      return days > 30;
+    });
+  }
+
+  getMajorCases() {
+    const AMOUNT_THRESHOLD = 50000;
+    const PARTIES_THRESHOLD = 5;
+    return this.cases.filter(c => {
+      const involvedCount = c.involvedPartiesCount || c.parties?.length || 0;
+      const isManyParties = involvedCount >= PARTIES_THRESHOLD;
+      const isHighAmount = (c.involvedAmount || 0) >= AMOUNT_THRESHOLD;
+      const hasPetitionRisk = c.hasPetitionRisk === true;
+      return isManyParties || isHighAmount || hasPetitionRisk;
+    });
+  }
+
+  findRepeatComplaint(partyName: string, category: string, description: string) {
+    const name = partyName.toLowerCase().trim();
+    const desc = description.toLowerCase().trim();
+    
+    const cleanDesc = desc.replace(/[，。！？；：、·．,.\!?;:\-\\\/\s"'()（）【】\[\]《》<>~@#\$%\^&\*_\+=]/g, ' ');
+    const tokens = cleanDesc.split(/\s+/).filter(w => w.length > 0);
+    const grams: string[] = [];
+    for (const tok of tokens) {
+      for (let len = 2; len <= Math.min(4, tok.length); len++) {
+        for (let i = 0; i + len <= tok.length; i++) {
+          grams.push(tok.substring(i, i + len));
+        }
+      }
+    }
+    const seen = new Set<string>();
+    const descKeywords: string[] = [];
+    for (const g of grams) { if (!seen.has(g)) { seen.add(g); descKeywords.push(g); } }
+    const commonWords = ['楼下', '楼上', '影响', '没有', '无法', '直接', '问题', '情况', '已经', '现在', '因为', '我们', '他们', '你们'];
+    const descKeywordsFiltered = descKeywords.filter(k => !commonWords.includes(k)).slice(0, 20);
+    
+    return this.cases.find(c => {
+      if (c.status === 'merged') return false;
+      if (c.category !== category) return false;
+      const partyMatch = c.parties.some(p => 
+        p.name.toLowerCase().includes(name) || name.includes(p.name.toLowerCase())
+      );
+      if (!partyMatch) return false;
+      
+      const caseDesc = c.description.toLowerCase();
+      const caseTitle = c.title.toLowerCase();
+      
+      let kwHit = 0;
+      const kwChecked = new Set<string>();
+      for (const kw of descKeywordsFiltered) {
+        if (kwChecked.has(kw)) continue;
+        kwChecked.add(kw);
+        if (caseDesc.includes(kw) || caseTitle.includes(kw)) {
+          kwHit++;
+        }
+      }
+      const keywordMatch = descKeywordsFiltered.length > 0 && kwHit >= Math.max(1, Math.floor(descKeywordsFiltered.length * 0.1));
+      
+      const prefixMatch = caseDesc.includes(desc.substring(0, Math.min(20, desc.length)))
+        || caseTitle.includes(desc.substring(0, Math.min(10, desc.length)));
+      
+      const shortMatch = (desc.length >= 4 && (
+        caseDesc.includes(desc.substring(0, 4)) || caseTitle.includes(desc.substring(0, 4)) ||
+        caseDesc.includes(desc.substring(Math.max(0, desc.length - 6))) || caseTitle.includes(desc.substring(Math.max(0, desc.length - 6)))
+      ));
+      
+      const isMatch = keywordMatch || prefixMatch || shortMatch;
+      
+      if (isMatch) {
+        const reasons = [];
+        if (partyMatch) reasons.push('当事人姓名匹配');
+        if (keywordMatch) reasons.push('描述关键词匹配');
+        if (prefixMatch || shortMatch) reasons.push('内容标题匹配');
+        const baseScore = (c.category === category ? 30 : 0)
+          + (partyMatch ? 35 : 0)
+          + (keywordMatch ? Math.min(25, kwHit * 5) : (prefixMatch ? 20 : (shortMatch ? 15 : 0)));
+        (c as any)._matchScore = Math.min(99, baseScore + 5);
+        (c as any)._matchReasons = reasons;
+      }
+      return isMatch;
     });
   }
 }

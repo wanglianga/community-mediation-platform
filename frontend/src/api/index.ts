@@ -84,6 +84,63 @@ export const caseApi = {
     } catch {}
     return mock.getSupervisionCases()
   },
+  async getOverdueCases() {
+    try {
+      const res = await fetch('/api/cases/overdue')
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getOverdueCases()
+  },
+  async getMajorCases() {
+    try {
+      const res = await fetch('/api/cases/major')
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getMajorCases()
+  },
+  async getSupervisionOrders(params?: { status?: string; type?: string; caseId?: string }) {
+    try {
+      const query = params ? '?' + new URLSearchParams(params as any).toString() : ''
+      const res = await fetch(`/api/cases/supervision-orders${query}`)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getSupervisionOrders(params)
+  },
+  async getSupervisionOrder(id: string) {
+    try {
+      const res = await fetch(`/api/cases/supervision-orders/${id}`)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getSupervisionOrder(id)
+  },
+  async updateSupervisionOrder(id: string, data: any) {
+    try {
+      const res = await put(`/api/cases/supervision-orders/${id}`, data)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.updateSupervisionOrder(id, data)
+  },
+  async getCaseSupervisionOrders(caseId: string) {
+    try {
+      const res = await fetch(`/api/cases/${caseId}/supervision-orders`)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.getCaseSupervisionOrders(caseId)
+  },
+  async checkRelapse(data: any) {
+    try {
+      const res = await post('/api/cases/check-relapse', data)
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.checkAndHandleRelapse(data)
+  },
+  async createWithRelapse(data: any, originalCaseId?: string) {
+    try {
+      const res = await post('/api/cases/create-with-relapse', { ...data, originalCaseId })
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.createCaseWithRelapseCheck(data, originalCaseId)
+  },
   async findSimilar(partyName: string, category?: string, excludeId?: string) {
     try {
       const params: any = { partyName }
@@ -162,12 +219,19 @@ export const clueApi = {
     } catch {}
     return mock.createClue(data)
   },
-  async accept(id: string) {
+  async checkRepeat(data: any) {
     try {
-      const res = await post(`/api/clues/${id}/accept`, {})
+      const res = await post('/api/clues/check-repeat', data)
       if (res.ok) return res.json()
     } catch {}
-    return mock.acceptClue(id)
+    return mock.checkAndHandleRelapse(data)
+  },
+  async accept(id: string, originalCaseId?: string) {
+    try {
+      const res = await post(`/api/clues/${id}/accept`, { originalCaseId })
+      if (res.ok) return res.json()
+    } catch {}
+    return mock.acceptClue(id, originalCaseId)
   },
   async reject(id: string, reason: string) {
     try {

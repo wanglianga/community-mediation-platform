@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { CluesController } from './clues.controller';
 import { CluesService } from './clues.service';
-import { InMemoryStore } from '../../store/store';
+import { CasesModule } from '../cases/cases.module';
 
 @Module({
+  imports: [CasesModule],
   controllers: [CluesController],
-  providers: [CluesService, InMemoryStore],
+  providers: [CluesService],
 })
 export class CluesModule {}

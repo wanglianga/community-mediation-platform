@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InMemoryStore } from '../../store/store';
+import { InMemoryStore, FulfillmentStatus } from '../../store/store';
 import dayjs from 'dayjs';
 
 @Injectable()
@@ -71,9 +71,48 @@ export class FollowupsService {
       }
     }
     
+    const fulfillmentStatus: FulfillmentStatus = result.fulfillmentStatus || 'fulfilled';
+    
+    if (fulfillmentStatus === 'not_fulfilled') {
+      const c = this.store.cases.find(cc => cc.id === f.caseId);
+      if (c) {
+        const supervisionOrder = this.store.addSupervisionOrder({
+          caseId: c.id,
+          caseNo: c.caseNo,
+          caseTitle: c.title,
+          type: 'not_fulfilled',
+          source: 'followup_not_fulfilled',
+          mediatorId: c.mediatorId || 'md1',
+          mediatorName: c.mediatorName || '李调解员',
+          status: 'pending',
+          deadline: dayjs().add(7, 'day').format(),
+          description: `回访结果为"未履行"，需督办原调解员跟进处理，督促当事人履行协议义务。`,
+          followupId: f.id,
+          supervisorId: c.judicialStaffId,
+          supervisorName: c.judicialStaffName
+        });
+        
+        c.status = 'supervision_pending';
+        c.isKeyFocus = true;
+        c.overdueCount = (c.overdueCount || 0) + 1;
+        
+        this.store.addTimeline(f.caseId, 'supervision_pending', '回访未履行，生成督办单', 
+          `回访结果：${result.fulfillmentStatus === 'not_fulfilled' ? '未履行' : result.fulfillmentStatus === 'partially_fulfilled' ? '部分履行' : '已履行'}。${result.fulfillmentNotes || result.notes}`,
+          f.handlerName);
+      }
+    } else if (fulfillmentStatus === 'partially_fulfilled') {
+      const c = this.store.cases.find(cc => cc.id === f.caseId);
+      if (c) {
+        c.isKeyFocus = true;
+        this.store.addTimeline(f.caseId, 'followup_completed', '回访完成：部分履行',
+          `回访结果：部分履行。${result.fulfillmentNotes || result.notes}`,
+          f.handlerName);
+      }
+    }
+    
     if (result.hasDispute || result.performanceStatus === 'problematic') {
       this.updateCaseStatus(f.caseId, 'repeat_complaint', result.disputeDescription || '回访发现问题');
-    } else {
+    } else if (fulfillmentStatus === 'fulfilled') {
       const c = this.store.cases.find(cc => cc.id === f.caseId);
       if (c && c.status === 'followup_pending') this.updateCaseStatus(f.caseId, 'case_closed');
     }

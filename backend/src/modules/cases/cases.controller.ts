@@ -8,7 +8,15 @@ export class CasesController {
   @Get() list(@Query() q: any) { return this.service.list(q); }
   @Get('stats') stats() { return this.service.getStats(); }
   @Get('supervision') supervision() { return this.service.getSupervisionCases(); }
+  @Get('overdue') getOverdueCases() { return this.service.getOverdueCases(); }
+  @Get('major') getMajorCases() { return this.service.getMajorCases(); }
+  @Get('supervision-orders') getSupervisionOrders(@Query() q: any) { return this.service.getSupervisionOrders(q); }
+  @Get('supervision-orders/:id') getSupervisionOrder(@Param('id') id: string) { return this.service.getSupervisionOrder(id); }
+  @Put('supervision-orders/:id') updateSupervisionOrder(@Param('id') id: string, @Body() b: any) { return this.service.updateSupervisionOrder(id, b); }
+  @Get(':id/supervision-orders') getCaseSupervisionOrders(@Param('id') id: string) { return this.service.getCaseSupervisionOrders(id); }
   @Get('similar') findSimilar(@Query() q: any) { return this.service.findSimilarCases(q.partyName, q.category, q.excludeId); }
+  @Post('check-relapse') checkRelapse(@Body() b: any) { return this.service.checkAndHandleRelapse(b); }
+  @Post('create-with-relapse') createWithRelapse(@Body() b: any) { return this.service.createCaseWithRelapseCheck(b, b.originalCaseId); }
   @Get(':id') get(@Param('id') id: string) { return this.service.get(id); }
   @Get(':id/timeline') timeline(@Param('id') id: string) { return this.service.getTimeline(id); }
   @Get(':id/warnings') warnings(@Param('id') id: string) { return this.service.getWarnings(id); }

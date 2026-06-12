@@ -114,6 +114,45 @@
                 </select>
               </div>
             </div>
+            <div>
+              <label class="label-base !font-semibold">履行结果确认 <span class="text-red-500">*</span></label>
+              <div class="grid grid-cols-3 gap-3 mt-2">
+                <label class="flex items-center justify-center space-x-2 p-4 rounded-xl border-2 cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all" :class="rf.fulfillmentStatus === 'fulfilled' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 text-gray-600'">
+                  <input type="radio" v-model="rf.fulfillmentStatus" value="fulfilled" class="sr-only" />
+                  <div class="text-center">
+                    <CheckCircle class="w-8 h-8 mx-auto mb-1" />
+                    <p class="text-sm font-semibold">已履行</p>
+                    <p class="text-xs opacity-70">协议全部执行完毕</p>
+                  </div>
+                </label>
+                <label class="flex items-center justify-center space-x-2 p-4 rounded-xl border-2 cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all" :class="rf.fulfillmentStatus === 'partially_fulfilled' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-600'">
+                  <input type="radio" v-model="rf.fulfillmentStatus" value="partially_fulfilled" class="sr-only" />
+                  <div class="text-center">
+                    <AlertCircle class="w-8 h-8 mx-auto mb-1" />
+                    <p class="text-sm font-semibold">部分履行</p>
+                    <p class="text-xs opacity-70">部分协议未执行</p>
+                  </div>
+                </label>
+                <label class="flex items-center justify-center space-x-2 p-4 rounded-xl border-2 cursor-pointer hover:border-red-400 hover:bg-red-50 transition-all" :class="rf.fulfillmentStatus === 'not_fulfilled' ? 'border-red-500 bg-red-50 text-red-700' : 'border-gray-200 text-gray-600'">
+                  <input type="radio" v-model="rf.fulfillmentStatus" value="not_fulfilled" class="sr-only" />
+                  <div class="text-center">
+                    <XCircle class="w-8 h-8 mx-auto mb-1" />
+                    <p class="text-sm font-semibold">未履行</p>
+                    <p class="text-xs opacity-70">协议完全未执行</p>
+                  </div>
+                </label>
+              </div>
+              <div v-if="rf.fulfillmentStatus === 'partially_fulfilled'" class="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <label class="label-base !text-amber-700">部分履行说明</label>
+                <textarea v-model="rf.fulfillmentNotes" rows="2" class="input-base resize-none mt-1 !border-amber-200" placeholder="请说明哪些部分未履行..."></textarea>
+                <p class="text-xs text-amber-600 mt-2">⚠️ 案件将标记为重点关注，持续跟踪履行情况。</p>
+              </div>
+              <div v-if="rf.fulfillmentStatus === 'not_fulfilled'" class="mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
+                <label class="label-base !text-red-700">未履行情况说明</label>
+                <textarea v-model="rf.fulfillmentNotes" rows="2" class="input-base resize-none mt-1 !border-red-200" placeholder="请详细说明未履行的原因..."></textarea>
+                <p class="text-xs text-red-600 mt-2">🚨 提交后将自动生成督办单，指派原调解员限期跟进处理。</p>
+              </div>
+            </div>
             <div v-if="rf.hasDispute">
               <label class="label-base">新纠纷说明</label>
               <textarea v-model="rf.disputeDescription" rows="2" class="input-base resize-none" placeholder="请说明新的争议点..."></textarea>
@@ -198,7 +237,7 @@
 import { ref, computed, reactive, onMounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
-import { CalendarClock, User, Clock, Plus, CheckCircle, MessageSquare, Star, Phone, Home, Video, MapPin, AlertTriangle } from 'lucide-vue-next'
+import { CalendarClock, User, Clock, Plus, CheckCircle, MessageSquare, Star, Phone, Home, Video, MapPin, AlertTriangle, AlertCircle, XCircle } from 'lucide-vue-next'
 import type { Followup, Case } from '../types'
 import { followupApi, caseApi } from '../api'
 import { useUserStore } from '../stores/user'
@@ -212,7 +251,7 @@ const fType = ref('')
 const showResult = ref<Followup | null>(null)
 const showCreate = ref(false)
 
-const rf = reactive({ satisfaction: 5, emotionalState: 'stable', performanceStatus: 'normal', hasDispute: false, disputeDescription: '', notes: '', hasThreat: false, hasGathering: false, hasVerbalAbuse: false, emotionWarningDescription: '' })
+const rf = reactive({ satisfaction: 5, emotionalState: 'stable', performanceStatus: 'normal', hasDispute: false, disputeDescription: '', notes: '', hasThreat: false, hasGathering: false, hasVerbalAbuse: false, emotionWarningDescription: '', fulfillmentStatus: 'fulfilled' as const, fulfillmentNotes: '' })
 const nf = reactive({ caseId: '', type: 'phone' as Followup['type'], scheduledTime: dayjs().add(3, 'day').hour(10).minute(0).format('YYYY-MM-DDTHH:mm') })
 
 function stText(s: string) { return { pending: '待回访', completed: '回访完成', overdue: '已逾期', in_progress: '回访中' }[s] || s }
@@ -251,6 +290,7 @@ function openResult(f: Followup) {
   rf.satisfaction = 5; rf.emotionalState = 'stable'; rf.performanceStatus = 'normal'
   rf.hasDispute = false; rf.disputeDescription = ''; rf.notes = ''
   rf.hasThreat = false; rf.hasGathering = false; rf.hasVerbalAbuse = false; rf.emotionWarningDescription = ''
+  rf.fulfillmentStatus = 'fulfilled'; rf.fulfillmentNotes = ''
 }
 async function submitResult() {
   if (!showResult.value) return
@@ -260,7 +300,9 @@ async function submitResult() {
     disputeDescription: rf.disputeDescription || undefined, notes: rf.notes,
     recordTime: dayjs().format(),
     hasThreat: rf.hasThreat, hasGathering: rf.hasGathering, hasVerbalAbuse: rf.hasVerbalAbuse,
-    emotionWarningDescription: rf.emotionWarningDescription || undefined
+    emotionWarningDescription: rf.emotionWarningDescription || undefined,
+    fulfillmentStatus: rf.fulfillmentStatus,
+    fulfillmentNotes: rf.fulfillmentNotes || undefined
   })
   showResult.value = null
   list.value = await followupApi.list()
